@@ -1,6 +1,6 @@
 {
   "name": "omid-studio",
-  "version": "1.0.17",
+  "version": "1.0.20",
   "private": true,
   "scripts": {
     "predev": "node scripts/write-sw-version.mjs",

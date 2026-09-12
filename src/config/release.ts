@@ -48,11 +48,11 @@ export const RELEASE_CATEGORY_LABELS: Record<ReleaseCategory, string> = {
 
 export const RELEASE_INFO: ReleaseInfo = {
   version: APP_VERSION,
-  previousVersion: "1.0.16",
+  previousVersion: "1.0.19",
   changes: [
     {
-      category: "fix",
-      text: "رفع مشکل نمایش نسخه پیش از تکمیل به‌روزرسانی",
+      category: "improvement",
+      text: "جایگزینی امضای برند پاورقی با لوگوی رسمی",
     },
   ],
 };

@@ -1,23 +1,26 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 /**
- * The oversized OMID signature that closes the page.
+ * The OMID logo that closes the footer.
  *
- * Typographic treatment: the gradient, edge stroke and shadow layers all
- * live on the same element that holds the text (background-clip: text
- * cannot paint through transformed child spans — each letter used to be
- * individually wrapped and the fill silently vanished). The reveal is
- * therefore a single rise+fade of the whole wordmark the moment it scrolls
- * into view, driven by IntersectionObserver.
+ * The actual brand asset (`/images/omid-logo.png` — wordmark + four-point
+ * symbol + the brand's blue gradient), background-removed so the footer's
+ * ink theme shows through. Presented as a refined signature, not a display
+ * title: centered inside the footer's own 80rem container, capped height
+ * (8.5rem desktop → 3.5rem mobile via `h-*` + `w-auto`), so it can never
+ * span the viewport, touch the edges, or be cropped — the intrinsic aspect
+ * ratio is preserved by `height: auto` on the image element.
  *
- * `dir="ltr"` is required: the page is RTL and a flex row would otherwise
- * lay the letters out right-to-left, reading "DIMO".
+ * A single faint ambient glow (the site's `--color-blue` at 6%) rises
+ * behind it, so the logo reads as lit by the page rather than pasted on
+ * it. The reveal is a soft rise+fade driven by IntersectionObserver;
+ * `prefers-reduced-motion` shows the logo immediately, unmoved.
  *
  * Decorative only (aria-hidden): the brand is already announced in the
- * footer's text content. `prefers-reduced-motion` shows the full wordmark
- * immediately with no animation.
+ * footer's text content.
  */
 export function FooterWordmark() {
   const ref = useRef<HTMLDivElement>(null);
@@ -27,9 +30,14 @@ export function FooterWordmark() {
     const node = ref.current;
     if (!node) return;
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setRevealed(true);
-      return;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (reducedMotion) {
+      // Deferred (not synchronous) so the effect doesn't trigger a cascading
+      // render during the commit phase — lint rule react-hooks/set-state-in-effect.
+      const id = window.setTimeout(() => setRevealed(true), 0);
+      return () => window.clearTimeout(id);
     }
 
     const observer = new IntersectionObserver(
@@ -49,23 +57,30 @@ export function FooterWordmark() {
     <div
       ref={ref}
       aria-hidden="true"
-      dir="ltr"
-      className="pointer-events-none select-none overflow-hidden"
+      className="pointer-events-none select-none"
     >
-      <p
-        className={`wordmark-gradient -mb-[0.2em] w-full px-[2vw] text-center text-[clamp(5rem,23vw,22rem)] font-extrabold leading-[0.8] tracking-[-0.045em] transition-[opacity,transform] duration-[1100ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          revealed
-            ? "translate-y-0 opacity-100"
-            : "translate-y-[0.35em] opacity-0"
-        }`}
-      >
-        OMID
-      </p>
-      {/* hairline baseline — the engineered anchor the wordmark sits on */}
-      <div
-        aria-hidden="true"
-        className="mx-auto h-px w-full max-w-[96vw] bg-gradient-to-r from-transparent via-line-strong to-transparent"
-      />
+      <div className="relative mx-auto flex w-full max-w-[80rem] justify-center px-[3vw] pb-6 pt-10 md:pb-8">
+        {/* Ambient environment glow behind the logo — one faint pool of the
+            site's own blue, so the mark feels lit by the page itself. */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-[10%] bottom-0 top-[20%] rounded-[100%] bg-[radial-gradient(55%_70%_at_50%_65%,rgb(91_140_255/0.06),transparent_72%)] blur-2xl"
+        />
+
+        <Image
+          src="/images/omid-logo.png"
+          alt=""
+          width={923}
+          height={328}
+          priority={false}
+          draggable={false}
+          className={`relative h-14 w-auto transition-[opacity,transform] duration-[1100ms] ease-[cubic-bezier(0.22,1,0.36,1)] md:h-24 lg:h-[8.5rem] ${
+            revealed
+              ? "translate-y-0 opacity-100"
+              : "translate-y-[0.35em] opacity-0"
+          }`}
+        />
+      </div>
     </div>
   );
 }
