@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# immutable per-version release artifacts (built, never committed)
+/.releases/
+
 # production
 /build
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { APP_VERSION } from "@/config/version";
+import { RELEASE_INFO } from "@/config/release";
 import {
   getCompletedVersion,
 } from "@/lib/update-store";
@@ -69,6 +70,11 @@ export async function GET(request: Request) {
           // completed — NOT the deployed release. It advances only via
           // /api/update/complete after full persistence.
           effectiveVersion: userCompletedVersion ?? null,
+          // Release metadata for the update being OFFERED. The update card is
+          // rendered by whatever build the client is running (possibly an
+          // older one), so its bundled notes describe the wrong release — the
+          // authority on what a release contains is always this backend.
+          release: RELEASE_INFO,
         },
       },
       { headers: NO_STORE },

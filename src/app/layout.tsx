@@ -3,6 +3,7 @@ import "@fontsource-variable/vazirmatn";
 import "./globals.css";
 import "@/components/layout/starfield.css";
 import { site } from "@/data/site";
+import { APP_VERSION } from "@/config/version";
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -103,7 +104,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa" dir="rtl" className="scroll-smooth">
+    <html
+      lang="fa"
+      dir="rtl"
+      className="scroll-smooth"
+      /* The release this document was rendered from (`scripts/release-server.mjs`
+         serves each client its completed release), so the build that produced a
+         page is always verifiable — and version mixing is detectable. */
+      data-app-version={APP_VERSION}
+    >
       <body>
         <script
           type="application/ld+json"

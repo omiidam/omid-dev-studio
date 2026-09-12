@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EASE } from "@/lib/animations";
 import { APP_VERSION } from "@/config/version";
 import {
@@ -47,6 +47,12 @@ interface UpdateStatus {
   userCompletedVersion: string | null;
   /** Version the client is on — the backend's record of what they completed. */
   effectiveVersion: string | null;
+  /** Metadata of the release being offered, served by the latest release. */
+  release?: {
+    version: string;
+    previousVersion: string;
+    changes: ReleaseChange[];
+  };
 }
 
 type Phase =
@@ -56,17 +62,17 @@ type Phase =
   | "activating" // backend confirmation in progress
   | "error"; // failed — offer restored, versions unchanged
 
-/** Changes of the current release, grouped by category (labels shown only when present). */
-const CHANGE_GROUPS: { category: ReleaseCategory; items: ReleaseChange[] }[] =
-  (() => {
-    const order: ReleaseCategory[] = ["new", "improvement", "fix", "optimization"];
-    const groups: { category: ReleaseCategory; items: ReleaseChange[] }[] = [];
-    for (const category of order) {
-      const items = RELEASE_INFO.changes.filter((c) => c.category === category);
-      if (items.length > 0) groups.push({ category, items });
-    }
-    return groups;
-  })();
+const CATEGORY_ORDER: ReleaseCategory[] = ["new", "improvement", "fix", "optimization"];
+
+/** Group a release's changes by category (labels shown only when present). */
+function groupChanges(changes: ReleaseChange[]) {
+  const groups: { category: ReleaseCategory; items: ReleaseChange[] }[] = [];
+  for (const category of CATEGORY_ORDER) {
+    const items = changes.filter((change) => change.category === category);
+    if (items.length > 0) groups.push({ category, items });
+  }
+  return groups;
+}
 
 function devLog(...parts: unknown[]) {
   if (process.env.NODE_ENV === "development") {
@@ -317,6 +323,18 @@ export function ServiceWorkerRegistration() {
     (phase === "offer" || phase === "updating" || phase === "activating" || phase === "error") &&
     !postponed;
 
+  /**
+   * The changelog must describe the release being OFFERED. This page may be an
+   * older build (an outdated client keeps running its own release), and its
+   * bundled notes describe the release it was built from — so the backend's
+   * copy wins whenever it is available and matches the offered version.
+   */
+  const offeredChanges =
+    status?.release && status.release.version === status.currentVersion
+      ? status.release.changes
+      : RELEASE_INFO.changes;
+  const changeGroups = useMemo(() => groupChanges(offeredChanges), [offeredChanges]);
+
   const progress = phase === "updating" ? 85 : phase === "activating" ? 95 : 0;
 
   const progressLabel =
@@ -434,7 +452,7 @@ export function ServiceWorkerRegistration() {
 
                   {/* categorized change list */}
                   <div className="mt-2.5 space-y-2.5">
-                    {CHANGE_GROUPS.map((group) => (
+                    {changeGroups.map((group) => (
                       <div key={group.category}>
                         <p className="text-[10px] font-medium text-faint">
                           {RELEASE_CATEGORY_LABELS[group.category]}

@@ -47,27 +47,60 @@ No other variables are read by the application today. Nothing is
 
 ```bash
 npm ci                 # exact install from lockfile
-npm run build          # prebuild writes the versioned /public/sw.js, then next build
-npm run start          # serve the production build
+npm run release        # build + publish this version as an immutable artifact
+npm run start          # version router on port 57500 (serves each client its release)
 ```
 
-- **Production port is 57500** (`next start -p 57500`, set in the `start`
-  script). Put it behind the host's HTTPS reverse proxy and forwards traffic
-  to `127.0.0.1:57500`; the app itself does not terminate TLS.
-- `npm run dev` is for development only — never use it in production. Running
-  `next dev` serves unoptimized bundles and injects the Next.js development
-  indicator; production must always run the `npm run build` +
-  `npm run start` pair on port 57500.
+- **Production port is 57500.** Put it behind the host's HTTPS reverse proxy
+  and forward traffic to `127.0.0.1:57500`; the app itself does not terminate
+  TLS.
+- `npm run start` launches **`scripts/release-server.mjs`** — the version
+  router. It reads `.data/releases.json`, starts one `next start` lane per
+  retained release on internal ports (57510, 57511, …) and serves every
+  request from the lane matching the client's completed version. See
+  "Versioned releases" below and `VERSIONING.md`.
+- `npm run start:next` is the raw single-build server (`next start -p 57500`).
+  It has **no version isolation** — for debugging only; without a release
+  registry the router also falls back to this behaviour and logs a warning.
+- `npm run dev` is for development only — never use it in production.
 - The PWA service worker is versioned automatically by
   `scripts/write-sw-version.mjs` (runs on `prebuild`/`predev`) from
-  `src/config/version.ts`. Bump `APP_VERSION` on every deploy so installed
-  clients are offered the update toast.
+  `src/config/version.ts`. Bump `APP_VERSION` on every release.
+
+## Versioned releases
+
+A release is deployed only when its artifact exists:
+
+1. `APP_VERSION` bumped, `npm run release` run (`next build` +
+   `scripts/release-publish.mjs`).
+2. The artifact lands in `.releases/<version>/` and is registered in
+   `.data/releases.json`.
+3. The running router picks the registry up within ~1s: the new release
+   becomes `latest` (new clients and `/api/update/*`), and re-publishing an
+   existing version replaces that version's lane — no restart required.
+
+Consequences to keep in mind when operating this host:
+
+- **Old releases must stay available** as long as clients still run them:
+  pruning skips any release that a client has as their completed version
+  (`OMID_STUDIO_RELEASES_KEEP`, default 4).
+- **`.releases/` needs disk space** (one build per retained release) and
+  survives restarts; it is gitignored, never committed.
+- **Ports 57510+ must be free** for the lanes; the router skips ports that are
+  already taken. A leftover lane process keeps its port, so stop old node
+  processes before starting the router when in doubt.
+- **Do not point the reverse proxy at a lane port.** Only 57500 is public;
+  `/__releases` (loopback only) shows what the router is serving.
 
 ## Persistence
 
-Project inquiries are stored by `src/lib/project-store.ts`. Today that is a
-JSON file written atomically to `OMID_STUDIO_DATA_FILE`
-(`.data/inquiries.json` by default).
+Three stores live under `.data/`: inquiries (`src/lib/project-store.ts`),
+analytics (`src/lib/analytics-store.ts`) and update state
+(`src/lib/update-store.ts`). They are JSON/NDJSON files written atomically to
+`OMID_STUDIO_DATA_FILE`, `OMID_STUDIO_ANALYTICS_FILE` and
+`OMID_STUDIO_UPDATE_STATE_FILE` respectively. **Release lanes run in their own
+working directories**, so the router passes all three as absolute paths —
+keeping every release on the same data.
 
 This is production-safe **only** when the hosting environment keeps that
 path stable across restarts and redeployments — e.g. a single self-hosted
@@ -135,12 +168,15 @@ curl -s -X POST "https://<host>/api/projects" \
 
 ## Rollback / recovery
 
-1. **Identify the deployed version** — footer shows `نسخه X.Y.Z`, sourced from
-   `src/config/version.ts`; the version is also embedded in `/sw.js`.
-2. **Redeploy a known-good build** — re-run `npm ci && npm run build` from the
-   previous release's source and start it. If you keep release artifacts,
-   preserve the whole `package-lock.json` + `.next` output pair from the good
-   build so the rollback build matches the locked dependency tree.
+1. **Identify the deployed version** — `curl -s http://127.0.0.1:57500/__releases`
+   lists the live lanes and build ids; the footer badge shows each client's
+   own effective version (`نسخه X.Y.Z`), and the version is embedded in that
+   release's `/sw.js`.
+2. **Redeploy a known-good build** — re-publish the previous release: check out
+   that release's source, `npm run build`, then
+   `OMID_STUDIO_PUBLISH_FROM=<dir> OMID_STUDIO_PUBLISH_VERSION=<version> node scripts/release-publish.mjs`.
+   The corresponding artifact may already exist in `.releases/<version>/` if it
+   is still retained.
 3. **Restore environment configuration** — re-apply the same
    `OMID_STUDIO_DATA_FILE` value (and future secrets) from your secrets store;
    environment is not part of the code bundle.

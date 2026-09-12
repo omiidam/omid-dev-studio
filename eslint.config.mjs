@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Immutable per-version release artifacts (build output, never linted):
+    // each one contains a full `.next` build and a copy of `public/`.
+    ".releases/**",
   ]),
 ]);
 

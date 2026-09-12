@@ -1,13 +1,15 @@
 {
   "name": "omid-studio",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "private": true,
   "scripts": {
     "predev": "node scripts/write-sw-version.mjs",
     "dev": "next dev",
     "prebuild": "node scripts/write-sw-version.mjs",
     "build": "next build",
-    "start": "next start -p 57500",
+    "release": "npm run build && node scripts/release-publish.mjs",
+    "start": "node scripts/release-server.mjs",
+    "start:next": "next start -p 57500",
     "lint": "eslint",
     "icons": "node scripts/generate-icons.mjs"
   },
