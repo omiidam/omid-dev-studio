@@ -1,0 +1,494 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-paper: var(--paper);
+  --color-soft: var(--soft);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-violet: var(--violet);
+  --color-blue: var(--blue);
+  --color-cyan: var(--cyan);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+
+  --font-sans: "Vazirmatn Variable", "Vazirmatn", ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+    monospace;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --ink: #060609;
+  --ink-2: #0a0a11;
+  --ink-3: #12121c;
+
+  /* Text — deliberate hierarchy: paper (primary) > soft (secondary) >
+     muted (tertiary) > faint (metadata). faint was raised so labels and
+     kickers stay clearly readable (~4.9:1 on ink / ~4.6:1 on ink-2)
+     instead of vanishing into the background. */
+  --paper: #f3f3f7;
+  --soft: #c8c8d4;
+  --muted: #8d8d9f;
+  --faint: #7a7a88;
+
+  /* Structure */
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.16);
+
+  /* Accent system — violet → blue → cyan */
+  --violet: #8b7bff;
+  --blue: #5b8cff;
+  --cyan: #4cc2ff;
+  --danger: #f2838f;
+  --success: #3bcf8f;
+
+  --gradient-primary: linear-gradient(
+    115deg,
+    #a78bfa 0%,
+    #7c8cff 45%,
+    #55c1ff 100%
+  );
+  --gradient-soft: linear-gradient(
+    115deg,
+    rgb(167 139 250 / 0.16),
+    rgb(124 140 255 / 0.1),
+    rgb(85 193 255 / 0.12)
+  );
+
+  --shadow-glow: 0 0 80px -20px rgb(124 140 255 / 0.45);
+}
+
+@utility text-gradient {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility text-gradient-soft {
+  background: var(--gradient-soft);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Dedicated semantic color for the final brand statement (footer "قاب آخر").
+   Warm orange — deliberately distinct from paper headings, muted body text,
+   and the violet/cyan accent system, so the sentence reads as the signature
+   conclusion of the page. High contrast on the ink background (~8.5:1).
+   Reserve it exclusively for that one sentence. */
+@utility statement-text {
+  color: #f59e4c;
+}
+
+/* Footer wordmark — the OMID Studio brand signature.
+
+   Layered treatment, all derived from the site's own accent system
+   (violet → blue → cyan, --gradient-primary):
+     1. primary gradient fill — the accent sweep across the letters
+     2. edge definition  — a hairline light rim on the glyph outline
+     3. soft shadow      — a drop-shadow lifting the letters off the ink
+     4. ambient glow     — one restrained accent halo, never bright
+
+   Depth without blur: the glyph fill stays crisp; only the layers behind
+   it diffuse. A very slow background-position drift adds life; the
+   global prefers-reduced-motion kill-switch naturally freezes it (the
+   animation is decorative, so no exemption is registered). */
+@utility wordmark-gradient {
+  background: linear-gradient(
+    100deg,
+    #a78bfa 0%,
+    #8b7bff 30%,
+    #5b8cff 55%,
+    #4cc2ff 78%,
+    #7de0ff 100%
+  );
+  background-size: 160% 100%;
+  background-position: 0% 0%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.045em;
+
+  /* Layer 2 — hairline edge definition: a faint light rim keeps the letter
+     geometry crisp against the ink without reading as an outline. */
+  -webkit-text-stroke: 1px rgb(255 255 255 / 0.07);
+
+  /* Layers 3 + 4 — one soft contact shadow plus one restrained ambient
+     halo, both tinted with the wordmark's own accent colors. */    filter: drop-shadow(0 16px 40px rgb(139 123 255 / 0.35))
+    drop-shadow(0 0 55px rgb(76 194 255 / 0.16));
+
+  animation: wordmark-drift 16s ease-in-out infinite alternate;
+}
+
+@keyframes wordmark-drift {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 100% 0%;
+  }
+}
+
+/* Light preference — the same brand sweep, deepened for contrast against a
+   light background, with the shadow/glow layers re-tuned for a bright
+   surface (darker halo, tighter shadow). */
+@media (prefers-color-scheme: light) {
+  .wordmark-gradient {
+    background: linear-gradient(
+      100deg,
+      #4534a0 0%,
+      #6d4de0 30%,
+      #3f6ce0 55%,
+      #0e7cc0 78%,
+      #2b9fe0 100%
+    );
+    -webkit-text-stroke-color: rgb(255 255 255 / 0.18);
+    filter: drop-shadow(0 14px 32px rgb(69 52 160 / 0.22))
+      drop-shadow(0 0 45px rgb(14 124 192 / 0.12));
+  }
+}
+
+@utility container-site {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 80rem;
+  padding-inline: 1.5rem;
+
+  @media (min-width: 640px) {
+    padding-inline: 2rem;
+  }
+
+  @media (min-width: 1024px) {
+    padding-inline: 3rem;
+  }
+}
+
+html {
+  background: var(--ink);
+}
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+
+::selection {
+  background: rgb(124 140 255 / 0.35);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Thin, quiet scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--ink);
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.12);
+  border-radius: 8px;
+  border: 2px solid var(--ink);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.2);
+}
+
+/* ════════════════════════════════════════════════════════════
+   Button system — 3D extruded interactive objects
+   Perspective + rotateX/rotateZ initial angle, extruded side and
+   bottom faces (preserve-3d), straightening toward the viewer on
+   hover. Uiverse-inspired construction, recolored into the OMID
+   Studio violet→blue→cyan system and mirrored for RTL.
+   ════════════════════════════════════════════════════════════ */
+@layer components {
+  .btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    border-radius: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transform-style: preserve-3d;
+    transform: perspective(950px) rotateX(48deg) rotateZ(18deg);
+    transition:
+      transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 200ms ease;
+  }
+
+  .btn:hover {
+    transform: perspective(950px) rotateX(12deg) rotateZ(0deg) translateY(-2px);
+  }
+
+  .btn:active {
+    transform: perspective(950px) rotateX(26deg) rotateZ(6deg);
+  }
+
+  .btn[disabled] {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* Mirrored 3D angle for the RTL layout */
+  [dir="rtl"] .btn {
+    transform: perspective(950px) rotateX(48deg) rotateZ(-18deg);
+  }
+  [dir="rtl"] .btn:hover {
+    transform: perspective(950px) rotateX(12deg) rotateZ(0deg) translateY(-2px);
+  }
+  [dir="rtl"] .btn:active {
+    transform: perspective(950px) rotateX(26deg) rotateZ(-6deg);
+  }
+
+  .btn-primary {
+    color: #f5f6fa;
+    text-shadow: 0 2px 10px rgb(0 0 0 / 0.35);
+    background:
+      radial-gradient(circle 140px at 85% -30%, rgb(255 255 255 / 0.14), transparent 55%),
+      linear-gradient(150deg, #2e2a55 0%, #1b1d33 55%, #12131f 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.12),
+      0 22px 44px -20px rgb(110 120 255 / 0.55);
+  }
+
+  /* bottom extrusion face */
+  .btn-primary::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 13px;
+    border-radius: 0 0 0.6rem 0.6rem;
+    background: linear-gradient(180deg, #191a2e, #10111c);
+    transform: rotateX(90deg);
+    transform-origin: bottom;
+  }
+
+  /* side extrusion face */
+  .btn-primary::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 13px;
+    height: 100%;
+    border-radius: 0 0.6rem 0.6rem 0;
+    background: linear-gradient(180deg, #45408a, #2c2a58);
+    transform: rotateY(-90deg);
+    transform-origin: right;
+  }
+  [dir="rtl"] .btn-primary::after {
+    right: auto;
+    left: 0;
+    border-radius: 0.6rem 0 0 0.6rem;
+    transform: rotateY(90deg);
+    transform-origin: left;
+  }
+
+  .btn-primary:hover {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.16),
+      0 26px 56px -20px rgb(110 120 255 / 0.8);
+  }
+
+  .btn-secondary {
+    color: var(--paper);
+    background:
+      radial-gradient(circle 140px at 85% -30%, rgb(255 255 255 / 0.07), transparent 55%),
+      linear-gradient(150deg, #24263a 0%, #171827 55%, #10111b 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 18px 36px -24px rgb(255 255 255 / 0.14);
+  }
+
+  .btn-secondary::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 10px;
+    border-radius: 0 0 0.6rem 0.6rem;
+    background: linear-gradient(180deg, #141524, #0d0e16);
+    transform: rotateX(90deg);
+    transform-origin: bottom;
+  }
+
+  .btn-secondary::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 10px;
+    height: 100%;
+    border-radius: 0 0.6rem 0.6rem 0;
+    background: linear-gradient(180deg, #3a3e5e, #262940);
+    transform: rotateY(-90deg);
+    transform-origin: right;
+  }
+  [dir="rtl"] .btn-secondary::after {
+    right: auto;
+    left: 0;
+    border-radius: 0.6rem 0 0 0.6rem;
+    transform: rotateY(90deg);
+    transform-origin: left;
+  }
+
+  .btn-secondary:hover {
+    background:
+      radial-gradient(circle 140px at 85% -30%, rgb(255 255 255 / 0.1), transparent 55%),
+      linear-gradient(150deg, #2a2d45 0%, #1a1c2e 55%, #12131f 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.1),
+      0 22px 44px -22px rgb(124 140 255 / 0.4);
+  }
+
+  .btn-primary:focus-visible,
+  .btn-secondary:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 3px;
+  }
+
+  /* Small meta label — Persian-safe (no tracking/uppercase, which would
+     break connected Arabic-script glyphs). */
+  .kicker {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--faint);
+  }
+}
+
+/* Moving light sweep inside progress bars (update card). */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Homepage hero image frame — animated gradient ring.
+
+   The attached reference's animated gradient border, adapted to the
+   OMID violet→cyan system. The ring is a masked pseudo-element that
+   paints only the 2px frame (content-box xor mask), so the image and
+   its overlays stay untouched and the animated area is minimal.
+   Decorative: pointer-events none, aria-hidden by construction.
+   ════════════════════════════════════════════════════════════ */
+.hero-image-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(
+    115deg,
+    transparent 28%,
+    var(--color-violet) 48%,
+    var(--color-cyan) 62%,
+    transparent 82%
+  );
+  background-size: 250% 100%;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: hero-frame-sweep 7s ease-in-out infinite;
+}
+
+@keyframes hero-frame-sweep {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Testimonials marquee —ReviewsMarquee.tsx owns the motion: the inner track
+   gets a pixel-exact keyframe rule injected at runtime (exactly one copy-set
+   width), so the loop point is invisible at any review count or viewport.
+   Only the edge fade lives here — hover pause was dropped deliberately: a
+   marquee that can stop must also be able to restart, and continuous motion
+   is this section's whole point. */
+.marquee-edge-fade {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 6%,
+    black 94%,
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 6%,
+    black 94%,
+    transparent
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Keep the gradient ring static instead of jumping to its end state. */
+  .hero-image-frame::before {
+    animation: none;
+  }
+}
+
+/* The reviews marquee is exempt from the reduced-motion kill-switch: its
+   continuous horizontal motion is the section's explicit purpose (site-owner
+   requirement), and the content remains fully readable while moving. The
+   global kill-switch above would otherwise silently freeze it (duration
+   0.01ms/1 iteration). The real duration lives inline on the track (set by
+   the component from measured sequence width) — only the iteration count is
+   restored here, so no duration value is duplicated in CSS. */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-edge-fade > div {
+    /* The component writes its measured duration into --marquee-duration; a
+       var() wins the !important cascade war against the `*` kill-switch
+       (higher specificity) and carries the DYNAMIC value — impossible to
+       express as a literal here. 20s is only a pre-JS fallback placeholder;
+       the running marquee always uses the measured inline value. */
+    animation-duration: var(--marquee-duration, 20s) !important;
+    animation-iteration-count: infinite !important;
+  }
+}
