@@ -112,7 +112,14 @@ never even sees the new one:
    as `latest` (new clients and update checks resolve there), and a
    re-published artifact replaces its own lane automatically. No restart, no
    downtime for other lanes.
-5. Commit and push (see below) — Git state and release state stay in lockstep.
+5. `npm run verify:release` against the running router — it must pass before
+   the release is considered good. The harness proves, on live traffic, that
+   every client is served its own completed release's bundle, that
+   `/api/update/status` is always answered by the latest release, that
+   "Later" never moves a client, and that the effective version advances only
+   through a persisted completion (forged/replayed transitions refused).
+   `WARN` lines are documented gaps, not failures; `FAIL` exits non-zero.
+6. Commit and push (see below) — Git state and release state stay in lockstep.
 
 Retention: `OMID_STUDIO_RELEASES_KEEP` (default 4) newest releases are kept, and
 a release is **never pruned while a client still has it as their completed
@@ -143,7 +150,9 @@ at a root that has one (`turbopack: { root: … }` in that tree's
   the latest lane and are offered the update; the router logs a warning for
   each such request. Today 1.0.17 has been backfilled from Git; clients on
   1.0.11/1.0.15 cannot be served their original build and resolve to the
-  latest release until they complete the update once.
+  latest release until they complete the update once. `npm run verify:release`
+  reports exactly these cases as `WARN` (with the affected client count) and
+  fails only when an artifact exists but no lane serves it.
 - **Update-card changelog for old builds.** The card is rendered by the build
   the client is running. From 1.0.21 onward it takes the offered release's
   changelog from the backend; a client still on an older build (1.0.17/1.0.20)

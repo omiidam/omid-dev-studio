@@ -1,6 +1,6 @@
 {
   "name": "omid-studio",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "private": true,
   "scripts": {
     "predev": "node scripts/write-sw-version.mjs",
@@ -8,6 +8,7 @@
     "prebuild": "node scripts/write-sw-version.mjs",
     "build": "next build",
     "release": "npm run build && node scripts/release-publish.mjs",
+    "verify:release": "node scripts/release-verify.mjs",
     "start": "node scripts/release-server.mjs",
     "start:next": "next start -p 57500",
     "lint": "eslint",
