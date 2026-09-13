@@ -76,14 +76,16 @@ export function FooterWordmark() {
       <div className="relative mx-auto flex w-full max-w-[80rem] justify-center px-[3vw] pb-6 pt-10 md:pb-8">
         {/* Ambient scene lighting behind the mark — two soft pools of the
             site's own accent system (violet on the start side, cyan on the
-            end side), matching the page's existing glow language. */}
+            end side), matching the page's existing glow language. Intensity
+            tuned so the pools read on the ink background without becoming
+            their own visual object. */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-[8%] bottom-0 top-[15%] rounded-[100%] blur-2xl"
+          className="absolute inset-x-[6%] bottom-0 top-[10%] rounded-[100%] blur-2xl"
           style={{
             background: [
-              "radial-gradient(38% 62% at 30% 62%, rgb(139 123 255 / 0.07), transparent 70%)",
-              "radial-gradient(38% 62% at 70% 62%, rgb(76 194 255 / 0.06), transparent 70%)",
+              "radial-gradient(42% 68% at 30% 60%, rgb(139 123 255 / 0.11), transparent 72%)",
+              "radial-gradient(42% 68% at 70% 60%, rgb(76 194 255 / 0.09), transparent 72%)",
             ].join(", "),
           }}
         />
@@ -99,12 +101,14 @@ export function FooterWordmark() {
             height={328}
             draggable={false}
             aria-hidden="true"
-            className="absolute inset-0 h-full w-auto scale-[1.015] opacity-25 blur-lg"
+            className="absolute inset-0 h-full w-auto scale-[1.03] opacity-30 blur-xl"
           />
 
           {/* Crisp mark — radial mask dissolves its outer edges into the
-              background; 0.92 opacity lets the dark theme participate in
-              its color, so it reads as embedded, not pasted. */}
+              background (fade begins earlier and ends sooner than the bloom,
+              so the silhouette never hard-stops); 0.92 opacity lets the dark
+              theme participate in its color, so it reads as embedded, not
+              pasted. */}
           <Image
             src="/images/omid-logo.png"
             alt=""
@@ -114,9 +118,9 @@ export function FooterWordmark() {
             className="relative h-14 w-auto opacity-92 md:h-24 lg:h-[8.5rem]"
             style={{
               maskImage:
-                "radial-gradient(88% 88% at 50% 50%, black 62%, transparent 98%)",
+                "radial-gradient(92% 92% at 50% 50%, black 48%, transparent 88%)",
               WebkitMaskImage:
-                "radial-gradient(88% 88% at 50% 50%, black 62%, transparent 98%)",
+                "radial-gradient(92% 92% at 50% 50%, black 48%, transparent 88%)",
             }}
           />
         </div>

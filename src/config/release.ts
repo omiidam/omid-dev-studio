@@ -48,19 +48,11 @@ export const RELEASE_CATEGORY_LABELS: Record<ReleaseCategory, string> = {
 
 export const RELEASE_INFO: ReleaseInfo = {
   version: APP_VERSION,
-  previousVersion: "1.0.23",
+  previousVersion: "1.0.24",
   changes: [
     {
       category: "improvement",
-      text: "یکپارچه‌سازی عمیق‌تر امضای برند OMID با پس‌زمینه صفحه",
-    },
-    {
-      category: "improvement",
-      text: "بازطراحی بصری فرم ثبت نظر",
-    },
-    {
-      category: "improvement",
-      text: "بهبود بخش ارتباطی پاورقی: آیکون‌ها و پیوندهای تماس به‌روز",
+      text: "تنظیم دقیق‌تر نور محیطی و محو شدن لبه‌های امضای برند OMID",
     },
   ],
 };
