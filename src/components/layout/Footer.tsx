@@ -5,6 +5,35 @@ import { FooterGetInTouch } from "@/components/layout/FooterGetInTouch";
 import { FooterWordmark } from "@/components/layout/FooterWordmark";
 import { FooterVersionBadge } from "@/components/layout/FooterVersionBadge";
 
+type SocialIconName = (typeof site.socials)[number]["icon"];
+
+/** Minimal line icons for the footer social links — inherited `currentColor`,
+    so the existing hover color transition covers both label and glyph. */
+function SocialIcon({ icon }: { icon: SocialIconName }) {
+  const className = "size-3.5 shrink-0 opacity-70 transition-opacity group-hover:opacity-100";
+  switch (icon) {
+    case "github":
+      return (
+        <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+        </svg>
+      );
+    case "telegram":
+      return (
+        <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M14.38 1.37 1.13 6.48c-.9.36-.89 1.68.02 2.02l3.29 1.23 1.26 3.99c.28.88 1.4 1.09 1.98.38l1.42-1.75 2.98 2.19c.66.48 1.6.12 1.78-.68l2.02-9.9c.18-.84-.63-1.55-1.5-1.59ZM5.6 9.24l7.6-4.79c.19-.12.39.14.23.29L7.5 10.2c-.14.14-.23.32-.26.51l-.28 2.02c-.04.27-.42.3-.5.04L5.6 9.24Z" />
+        </svg>
+      );
+    case "email":
+      return (
+        <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+          <rect x="1.5" y="3" width="13" height="10" rx="1.5" />
+          <path d="m2 4.5 6 4.5 6-4.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+  }
+}
+
 export function Footer() {
   return (
     <footer className="relative overflow-hidden">
@@ -37,7 +66,7 @@ export function Footer() {
                 </ul>
               </div>
               <div>
-                <p className="kicker">در دسترس</p>
+                <p className="kicker">ارتباط با ما</p>
                 <ul className="mt-4 flex flex-col gap-2.5">
                   {site.socials.map((social) => (
                     <li key={social.label}>
@@ -60,8 +89,9 @@ export function Footer() {
                         }
                         target={social.href.startsWith("mailto") ? undefined : "_blank"}
                         rel="noopener noreferrer"
-                        className="text-sm text-muted transition-colors duration-300 hover:text-paper"
+                        className="group flex items-center gap-2 text-sm text-muted transition-colors duration-300 hover:text-paper"
                       >
+                        <SocialIcon icon={social.icon} />
                         {social.label}
                       </a>
                     </li>

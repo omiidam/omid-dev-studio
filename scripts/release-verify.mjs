@@ -585,7 +585,18 @@ async function main() {
       afterUpdate.json?.data?.effectiveVersion === candidateVersion,
     `updateRequired=${afterUpdate.json?.data?.updateRequired}, effectiveVersion=${afterUpdate.json?.data?.effectiveVersion}`,
   );
-  const updatedPage = await request("/", { cookie: updateCookie });
+  /* The router caches the client store for STATE_CACHE_MS (1s). Immediately
+     after the completion POST the cache may still resolve this fresh client
+     to the authority lane — a timing artifact, not a routing leak. Poll past
+     the cache TTL instead of racing it; failure to converge by the deadline
+     is still a FAIL (timeout ≠ PASS). */
+  let updatedPage = null;
+  const routingDeadline = Date.now() + 6_000;
+  while (Date.now() < routingDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    updatedPage = await request("/", { cookie: updateCookie });
+    if (updatedPage.release === candidateVersion) break;
+  }
   check(
     "stage2:updated-client-runs-completed-bundle",
     updatedPage.release === candidateVersion &&

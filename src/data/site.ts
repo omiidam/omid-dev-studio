@@ -13,8 +13,8 @@ export const site = {
     { label: "تماس", href: "/#contact" },
   ],
   socials: [
-    { label: "GitHub", href: "https://github.com/" },
-    { label: "LinkedIn", href: "https://www.linkedin.com/" },
-    { label: "Email", href: "https://mail.google.com/mail/?view=cm&fs=1&to=amomiid07@gmail.com" },
+    { label: "GitHub", href: "https://github.com/omiidam/omid-dev-studio", icon: "github" },
+    { label: "Telegram", href: "https://t.me/o5237", icon: "telegram" },
+    { label: "Email", href: "https://mail.google.com/mail/?view=cm&fs=1&to=amomiid07@gmail.com", icon: "email" },
   ],
 } as const;

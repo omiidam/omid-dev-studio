@@ -7,14 +7,18 @@ import { cn } from "@/lib/utils";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
-const fieldClasses =
-  "w-full bg-transparent px-1 py-2 text-sm text-paper placeholder:text-faint focus:outline-none";
-
 /**
  * Feedback submission area below the testimonials marquee. Visitors can send
  * their own comment; it is routed to the existing validated inquiry endpoint
  * (mapped onto the same schema as the footer form — the backend stays
  * untouched and the recipient email stays canonical in `site.email`).
+ *
+ * Visual design (functionality untouched — same fields, same validation,
+ * same submission flow): the reference form's structure — a contained card
+ * with labelled fields on filled surfaces, decorative blurred accent blobs
+ * bleeding from behind the card, and a gradient submit button — rebuilt in
+ * the OMID Studio violet→blue→cyan system. Labels follow the reference's
+ * "label above field" hierarchy (Persian-safe: no tracking/uppercase).
  */
 export function TestimonialSubmit() {
   const [status, setStatus] = useState<Status>("idle");
@@ -73,10 +77,25 @@ export function TestimonialSubmit() {
     }
   };
 
+  const labelClasses = "block text-[13px] font-medium text-soft";
+  const fieldClasses =
+    "mt-1.5 w-full rounded-lg border border-line bg-ink-3 px-3 py-2.5 text-sm text-paper placeholder:text-faint shadow-[inset_2px_5px_10px_rgb(0_0_0/0.35)] transition-colors duration-300 focus:border-cyan/50 focus:outline-none";
+
   return (
     <Reveal>
-      <div className="relative mt-20 rounded-[1.5rem] border border-line bg-gradient-to-br from-violet/20 via-line/50 to-cyan/20 p-px shadow-[0_24px_70px_-32px_rgb(0_0_0/0.8)] md:mt-28">
-        <div className="rounded-[1.45rem] border border-line bg-ink-2/95 p-6 backdrop-blur-sm sm:p-8 md:p-10">
+      <div className="relative mt-20 overflow-hidden md:mt-28">
+        {/* Reference-style ambient accents — two blurred pools of the site's
+            own accent system bleeding from behind the card's corners. */}
+        <div
+          aria-hidden="true"
+          className="absolute -start-10 top-6 size-24 rounded-full bg-violet/40 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -end-12 top-28 size-32 rounded-full bg-cyan/30 blur-2xl"
+        />
+
+        <div className="relative z-10 mx-auto max-w-2xl overflow-hidden rounded-[1.5rem] border border-line bg-ink-2/95 p-6 shadow-[0_24px_70px_-32px_rgb(0_0_0/0.8)] backdrop-blur-sm sm:p-8 md:p-10">
           {status === "success" ? (
             <div
               className="flex min-h-48 flex-col items-start justify-center gap-4"
@@ -106,7 +125,7 @@ export function TestimonialSubmit() {
               </button>
             </div>
           ) : (
-            <div className="mx-auto max-w-2xl">
+            <div>
               <p className="kicker">نظر شما</p>
               <h3 className="mt-4 text-balance text-2xl font-medium leading-snug tracking-tight text-paper sm:text-3xl">
                 با نظرات ارزشمند خود، ما را در جهت پیشرفت و بهبود این مسیر
@@ -120,39 +139,48 @@ export function TestimonialSubmit() {
                 className="mt-8"
               >
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-xl border border-line bg-ink transition-colors duration-300 focus-within:border-cyan/50">
+                  <div>
+                    <label htmlFor="testimonial-name" className={labelClasses}>
+                      نام و نام خانوادگی
+                    </label>
                     <input
+                      id="testimonial-name"
                       name="name"
                       required
                       type="text"
                       autoComplete="name"
-                      placeholder="نام و نام خانوادگی"
-                      aria-label="نام و نام خانوادگی"
+                      placeholder="نام شما"
                       className={fieldClasses}
                     />
                   </div>
-                  <div className="rounded-xl border border-line bg-ink transition-colors duration-300 focus-within:border-cyan/50">
+                  <div>
+                    <label htmlFor="testimonial-email" className={labelClasses}>
+                      Email
+                    </label>
                     <input
+                      id="testimonial-email"
                       name="email"
                       required
                       type="email"
                       autoComplete="email"
-                      placeholder="Email"
-                      aria-label="Email"
+                      placeholder="you@example.com"
                       dir="ltr"
                       className={cn(fieldClasses, "text-left")}
                     />
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-xl border border-line bg-ink transition-colors duration-300 focus-within:border-cyan/50">
+                <div className="mt-4">
+                  <label htmlFor="testimonial-message" className={labelClasses}>
+                    نظر شما
+                  </label>
                   <textarea
+                    id="testimonial-message"
                     name="message"
                     required
                     rows={4}
                     placeholder="تجربه‌ی شما از این وب‌سایت…"
-                    aria-label="متن نظر"
-                    className={cn(fieldClasses, "resize-none py-3")}
+                    className={cn(fieldClasses, "resize-none")}
                   />
                 </div>
 
@@ -165,13 +193,16 @@ export function TestimonialSubmit() {
                   </p>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={status === "submitting"}
-                  className="mt-6 w-full rounded-xl border border-cyan/70 py-3 text-sm font-bold text-cyan transition-all duration-300 hover:bg-cyan hover:text-ink disabled:opacity-55 sm:w-auto sm:px-10"
-                >
-                  {status === "submitting" ? "در حال ارسال…" : "ارسال نظر"}
-                </button>
+                {/* Reference treatment: gradient submit button. */}
+                <div className="mt-6 flex justify-start">
+                  <button
+                    type="submit"
+                    disabled={status === "submitting"}
+                    className="rounded-lg bg-gradient-to-r from-violet via-blue to-cyan px-8 py-2.5 text-sm font-bold text-ink shadow-[0_14px_36px_-14px_rgb(124_140_255/0.55)] transition-all duration-300 hover:opacity-85 disabled:opacity-55"
+                  >
+                    {status === "submitting" ? "در حال ارسال…" : "ارسال نظر"}
+                  </button>
+                </div>
               </form>
             </div>
           )}
