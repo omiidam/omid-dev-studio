@@ -1,5 +1,7 @@
+#!/usr/bin/env node
 /**
- * release-publish.mjs — publish the current build as an immutable release.
+ * release-publish.mjs — publish the current build as an immutable release
+ * ARTIFACT and stage it as a CANDIDATE. It never promotes.
  *
  * Why this exists
  * ---------------
@@ -13,19 +15,38 @@
  *
  * `scripts/release-server.mjs` (the version router) then serves each client
  * the artifact matching their backend-authoritative effective version, so an
- * outdated client literally keeps running and loading their completed
- * release until their update has been persisted.
+ * outdated client literally keeps running and loading their completed release
+ * until their update has been persisted.
+ *
+ * Publishing ≠ releasing
+ * ----------------------
+ * This script only STAGES: the new artifact is registered with
+ * releaseStatus "candidate" and `current` is left untouched. A candidate
+ * becomes current only through the promotion gate
+ * (`scripts/release-verify.mjs --promote` → promoteCandidate()), which demands
+ * an explicit successful isolation verification of this exact build. If
+ * verification fails, is unavailable or times out, the candidate is marked
+ * BLOCKED and the previous current release keeps serving clients.
+ *
+ * Bootstrapping: when the registry has no current release at all (a fresh
+ * install, or a registry written before the gate existed) there is nothing to
+ * protect clients from, so the published release becomes current immediately
+ * and is logged loudly as a bootstrap.
  *
  * What it does
  * ------------
  *   1. Reads APP_VERSION (single source of truth: src/config/version.ts).
  *   2. Copies the production artifacts into `.releases/<version>/`.
- *   3. Updates the registry (`.data/releases.json`) — version → dir/port.
- *   4. Prunes older releases — but NEVER the latest, and never a release that
- *      a client still has as their completed version (pruning one would force
- *      that client onto a different build, i.e. exactly the mixing we forbid).
+ *   3. Stages the release in `.data/releases.json` as a candidate with a
+ *      one-time verification token (loopback-only, used by the verifier).
+ *   4. Prunes old releases — but NEVER the current one, the candidate, or a
+ *      release that a client still has as their completed version (pruning one
+ *      would force that client onto a different build, i.e. exactly the mixing
+ *      we forbid).
  *
- * Usage: `npm run release` (= npm run build && node scripts/release-publish.mjs)
+ * Usage: stage a release
+ *   npm run release:publish        (= npm run build && node scripts/release-publish.mjs)
+ *   npm run release                (build → stage → verify → promote, fail-closed)
  *
  * Backfilling a historical release (one that shipped before this pipeline
  * existed) is the same operation against another build directory:
@@ -34,18 +55,20 @@
  *     node scripts/release-publish.mjs
  */
 
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-
-const ROOT = process.cwd();
-const RELEASES_ROOT = path.join(ROOT, ".releases");
-const REGISTRY_FILE =
-  process.env.OMID_STUDIO_RELEASES_FILE ??
-  path.join(ROOT, ".data", "releases.json");
-const UPDATE_STATE_FILE =
-  process.env.OMID_STUDIO_UPDATE_STATE_FILE ??
-  path.join(ROOT, ".data", "update-state.json");
+import {
+  RELEASES_ROOT,
+  ROOT,
+  artifactDirsFor,
+  compareVersions,
+  exists,
+  generateVerifyToken,
+  readClientVersions,
+  readVersionFromSource,
+  updateRegistry,
+} from "./lib/release-registry.mjs";
 
 /** Exactly what a `next start` process needs to serve one immutable release. */
 const ARTIFACTS = ["package.json", "next.config.ts", "public", ".next"];
@@ -64,55 +87,6 @@ function fail(message) {
   process.exit(1);
 }
 
-async function exists(file) {
-  try {
-    await stat(file);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readVersion(dir) {
-  const source = await readFile(path.join(dir, "src", "config", "version.ts"), "utf8");
-  const match = source.match(/export const APP_VERSION = "([^"]+)"/);
-  if (!match) fail("could not parse APP_VERSION from src/config/version.ts");
-  return match[1];
-}
-
-/** Numeric semver compare (no dependency on a semver package). */
-function compareVersions(a, b) {
-  const pa = String(a).split(".").map((n) => Number.parseInt(n, 10) || 0);
-  const pb = String(b).split(".").map((n) => Number.parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-async function readJson(file, fallback) {
-  try {
-    return JSON.parse(await readFile(file, "utf8"));
-  } catch {
-    return fallback;
-  }
-}
-
-/** Versions that clients still have as their completed version. */
-async function readClientVersions() {
-  const state = await readJson(UPDATE_STATE_FILE, { clients: [] });
-  const versions = new Set();
-  if (Array.isArray(state?.clients)) {
-    for (const client of state.clients) {
-      if (typeof client?.completedVersion === "string" && client.completedVersion) {
-        versions.add(client.completedVersion);
-      }
-    }
-  }
-  return versions;
-}
-
 async function main() {
   // Normally the project's own build; a historical release can be backfilled
   // from any build directory via the two environment overrides.
@@ -120,7 +94,8 @@ async function main() {
     ? path.resolve(ROOT, process.env.OMID_STUDIO_PUBLISH_FROM)
     : ROOT;
   const version =
-    process.env.OMID_STUDIO_PUBLISH_VERSION ?? (await readVersion(fromDir));
+    process.env.OMID_STUDIO_PUBLISH_VERSION ?? (await readVersionFromSource(fromDir));
+  if (!version) fail("could not parse APP_VERSION from src/config/version.ts");
   const buildIdFile = path.join(fromDir, ".next", "BUILD_ID");
   if (!(await exists(buildIdFile))) {
     fail(`no .next/BUILD_ID in ${path.relative(ROOT, fromDir) || "."} — build it first.`);
@@ -151,104 +126,92 @@ async function main() {
     `${JSON.stringify({ version, buildId, publishedAt: new Date().toISOString() }, null, 2)}\n`,
     "utf8",
   );
-  log(`published ${version} (build ${buildId}) → ${path.relative(ROOT, releaseDir)}`);
+  log(`published artifact ${version} (build ${buildId}) → ${path.relative(ROOT, releaseDir)}`);
 
-  /* ── Registry: newest first, deterministic ports, safe pruning ────────── */
-  const registry = await readJson(REGISTRY_FILE, { releases: [] });
-  const entries = new Map();
-  for (const entry of Array.isArray(registry?.releases) ? registry.releases : []) {
-    if (entry && typeof entry.version === "string") entries.set(entry.version, entry);
-  }
-  entries.set(version, {
-    version,
-    buildId,
-    publishedAt: new Date().toISOString(),
-  });
-
-  let ordered = [...entries.values()].sort((a, b) =>
-    compareVersions(b.version, a.version),
-  );
-
+  const dir = `./.releases/${path.basename(releaseDir)}`;
+  const publishedAt = new Date().toISOString();
   const clientVersions = await readClientVersions();
-  const keep = new Set([version, ...clientVersions]);
-  const retained = [];
-  for (const entry of ordered) {
-    if (keep.has(entry.version) || retained.length < KEEP) {
-      retained.push(entry);
-      continue;
-    }
-    // Old release nothing references any more — drop its artifacts (not the
-    // release record, so we can still see what shipped) and free its port.
-    // A directory still held open by a running lane is skipped, never fought.
-    for (const dir of await artifactDirsFor(entry.version)) {
-      const removed = await rm(dir, { recursive: true, force: true }).then(
-        () => true,
-        () => false,
-      );
-      if (removed) log(`pruned unreferenced release ${path.basename(dir)}`);
-    }
-  }
-  ordered = retained;
 
-  const ports = await readRegistryPorts(REGISTRY_FILE);
-  const used = new Set();
-  // Registry paths use forward slashes so they stay portable across platforms.
-  const publishedDir = `./.releases/${path.basename(releaseDir)}`;
-  ordered = ordered.map((entry, index) => {
-    const preferred = ports.get(entry.version) ?? BASE_PORT + index;
-    let port = preferred;
-    while (used.has(port)) port += 1;
-    used.add(port);
-    return {
-      ...entry,
-      dir: entry.version === version ? publishedDir : (entry.dir ?? `./.releases/${entry.version}`),
-      port,
+  const staged = await updateRegistry(async (registry) => {
+    const entries = new Map(registry.releases.map((entry) => [entry.version, entry]));
+    const bootstrap = !registry.current;
+
+    entries.set(version, {
+      ...(entries.get(version) ?? {}),
+      version,
+      buildId,
+      dir,
+      publishedAt,
+      status: bootstrap ? "current" : "candidate",
+    });
+
+    /* Deterministic ports, newest first, reused across publishes so lanes and
+       their artifacts stay stable. */
+    const ports = new Map(
+      registry.releases
+        .filter((entry) => Number.isInteger(entry.port))
+        .map((entry) => [entry.version, entry.port]),
+    );
+    const keep = new Set([version, ...clientVersions]);
+    if (registry.current) keep.add(registry.current);
+
+    let ordered = [...entries.values()].sort((a, b) => compareVersions(b.version, a.version));
+    const retained = [];
+    for (const entry of ordered) {
+      if (keep.has(entry.version) || retained.length < KEEP) {
+        retained.push(entry);
+        continue;
+      }
+      for (const staleDir of await artifactDirsFor(entry.version)) {
+        const removed = await rm(staleDir, { recursive: true, force: true }).then(
+          () => true,
+          () => false,
+        );
+        if (removed) log(`pruned unreferenced release ${path.basename(staleDir)}`);
+      }
+    }
+    ordered = retained;
+
+    const used = new Set();
+    ordered = ordered.map((entry, index) => {
+      const preferred = ports.get(entry.version) ?? BASE_PORT + index;
+      let port = preferred;
+      while (used.has(port)) port += 1;
+      used.add(port);
+      return { ...entry, port };
+    });
+
+    const next = {
+      ...registry,
+      releases: ordered,
+      current: bootstrap ? version : registry.current,
     };
+    if (bootstrap) {
+      log(`BOOTSTRAP: no current release existed — ${version} becomes current without a gate`);
+      next.candidate = null;
+    } else {
+      next.candidate = {
+        version,
+        buildId,
+        status: "candidate",
+        publishedAt,
+        verifyToken: generateVerifyToken(),
+        verification: null,
+        blockedReason: null,
+      };
+    }
+    return next;
   });
 
-  await mkdir(path.dirname(REGISTRY_FILE), { recursive: true });
-  await writeFile(
-    REGISTRY_FILE,
-    `${JSON.stringify(
-      {
-        latest: ordered[0]?.version ?? version,
-        updatedAt: new Date().toISOString(),
-        releases: ordered,
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
-  log(`registry updated → latest=${ordered[0]?.version ?? version}, ${ordered.length} lane(s)`);
-  for (const entry of ordered) {
-    log(`  ${entry.version}  port ${entry.port}  ${entry.dir}`);
+  const entry = staged.releases.find((release) => release.version === version);
+  log(`registry → current=${staged.current} (unchanged), candidate=${staged.candidate?.version ?? "none"} on port ${entry?.port}`);
+  for (const release of staged.releases) {
+    log(`  ${release.version}  port ${release.port}  ${release.status ?? "retained"}  ${release.dir}`);
   }
-}
-
-/** Every artifact directory belonging to one version (a re-publish adds a `+buildId` suffix). */
-async function artifactDirsFor(version) {
-  let entries = [];
-  try {
-    entries = await readdir(RELEASES_ROOT);
-  } catch {
-    return [];
+  if (staged.candidate) {
+    log(`NOT ACTIVE YET — ${version} is a candidate. Promote it with the gate:`);
+    log("  npm run verify:release -- --promote      (verifies isolation, then promotes)");
   }
-  return entries
-    .filter((name) => name === version || name.startsWith(`${version}+`))
-    .map((name) => path.join(RELEASES_ROOT, name));
-}
-
-/** Existing ports are reused when still free, so lanes stay stable across publishes. */
-async function readRegistryPorts(file) {
-  const registry = await readJson(file, { releases: [] });
-  const ports = new Map();
-  for (const entry of Array.isArray(registry?.releases) ? registry.releases : []) {
-    if (entry && typeof entry.version === "string" && Number.isInteger(entry.port)) {
-      ports.set(entry.version, entry.port);
-    }
-  }
-  return ports;
 }
 
 main().catch((error) => {

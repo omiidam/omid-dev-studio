@@ -18,13 +18,29 @@
  *        │  version from the backend store     │
  *        └─────────────────┬──────────────────┘
  *                          │
- *     /api/update/* ───────┼───► LATEST lane  (authoritative version compare)
+ *     /api/update/* ───────┼───► CURRENT lane (authoritative version compare)
  *     everything else ─────┘───► lane of the client's COMPLETED version
- *                                 (fallback: latest lane)
+ *                                 (fallback: CURRENT lane)
  *                          │
  *      ┌───────────────────┼────────────────────┐
  *   :57510 1.0.21       :57511 1.0.20        :57512 1.0.19
  *   .releases/1.0.21/   .releases/1.0.20/    .releases/1.0.19/
+ *
+ * Current vs candidate (fail-closed promotion)
+ * --------------------------------------------
+ * The registry distinguishes `current` (the authoritative release, the only
+ * one clients are offered) from a staged `candidate` that has not passed the
+ * isolation gate yet. This process NEVER treats a candidate as current: a
+ * candidate's lane is started only so it can be verified, and it becomes the
+ * authority for real clients the moment `current` moves — which only
+ * `scripts/release-verify.mjs --promote` may do, after full verification.
+ *
+ * VERIFICATION MODE (loopback only): a request that arrives from this host and
+ * carries the candidate's one-time `x-omid-verify` token is routed exactly as
+ * it WOULD be after promotion (the candidate answers /api/update/*, old clients
+ * still get their own release). That lets the gate test the real routing
+ * decisions before they are real, while every genuine client keeps seeing the
+ * unchanged current release — no announcement, no leakage.
  *
  * Consequences, by construction:
  *   • An outdated client is served its own release's HTML, chunks, CSS,
@@ -33,7 +49,7 @@
  *   • "Later" changes nothing: the client's cookie still resolves to the old
  *     lane, so a refresh returns the same old build.
  *   • Only after POST /api/update/complete persists the new completed version
- *     (always handled by the LATEST lane, the only one whose APP_VERSION is
+ *     (always handled by the CURRENT lane, the only one whose APP_VERSION is
  *     current) does the client resolve to the new lane on reload.
  *   • The release becomes "current" only when its artifact is published and
  *     present in the registry — never before its files exist.
@@ -44,7 +60,7 @@
  * The router reads that state — it never writes it.
  *
  * Lanes other than the latest are best-effort: if a client's completed
- * release artifact is no longer retained, they fall back to the latest lane
+ * release artifact is no longer retained, they fall back to the current lane
  * and are offered the update (`npm run release` never prunes a release that a
  * client still has as their completed version).
  */
@@ -91,8 +107,10 @@ const ANALYTICS_FILE =
 const NEXT_BIN = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
 const UPDATE_CLIENT_COOKIE = "os_update_client";
 
-/** Endpoints that must ALWAYS be served by the latest release. */
+/** Endpoints that must ALWAYS be served by the authoritative release. */
 const LATEST_ONLY_PREFIXES = ["/api/update/"];
+/** Header the promotion gate uses to exercise the post-promotion routing. */
+const VERIFY_HEADER = "x-omid-verify";
 const LANE_READY_TIMEOUT_MS = 90_000;
 const REGISTRY_POLL_MS = 1_000;
 const STATE_CACHE_MS = 1_000;
@@ -204,7 +222,12 @@ async function clientCompletedVersions() {
 
 /** version → lane. A lane is one immutable release artifact plus its process. */
 const lanes = new Map();
-let latestVersion = null;
+/** currentReleaseVersion — the authoritative release. Never a candidate. */
+let currentVersion = null;
+/** Staged (or verified/blocked/promoted) candidate release, or null. */
+let candidate = null;
+/** version → releaseStatus, from the registry. */
+let releaseStatuses = new Map();
 let legacy = false;
 let registryLoadedAt = 0;
 
@@ -297,8 +320,8 @@ async function ensureLegacyLane() {
   log("run `npm run release` to publish immutable release artifacts and enable isolation.");
   legacy = true;
   await ensureLane(entry);
-  latestVersion = entry.version;
-  log(`latest lane: ${latestVersion} on ${LANE_HOST}:${entry.port} (legacy, mutable build)`);
+  currentVersion = entry.version;
+  log(`current lane: ${currentVersion} on ${LANE_HOST}:${entry.port} (legacy, mutable build)`);
 }
 
 async function readVersionFromSource() {
@@ -320,23 +343,74 @@ async function loadRegistry(force = false) {
     return;
   }
   const registry = await readJson(REGISTRY_FILE, null);
-  const releases = Array.isArray(registry?.releases) ? registry.releases : [];
+  const releases = (Array.isArray(registry?.releases) ? registry.releases : []).filter(
+    (entry) => typeof entry?.version === "string",
+  );
   if (releases.length === 0) {
     await ensureLegacyLane();
     return;
   }
 
   legacy = false;
-  for (const entry of releases) {
-    if (typeof entry?.version !== "string") continue;
+  releaseStatuses = new Map(releases.map((entry) => [entry.version, entry.status ?? null]));
+
+  /* `current` is the authoritative release; a pre-gate registry used `latest`
+     for the same concept. A staged candidate is NEVER current. */
+  const nextCurrent =
+    typeof registry.current === "string"
+      ? registry.current
+      : typeof registry.latest === "string"
+        ? registry.latest
+        : releases[0].version;
+  const nextCandidate =
+    registry.candidate && typeof registry.candidate.version === "string"
+      ? registry.candidate
+      : null;
+
+  // The candidate needs a lane so the gate can exercise it, even if a registry
+  // was hand-edited; ports are still resolved by findFreePort().
+  const entries = [...releases];
+  if (nextCandidate && !entries.some((entry) => entry.version === nextCandidate.version)) {
+    entries.push({
+      version: nextCandidate.version,
+      dir: nextCandidate.dir ?? `./.releases/${nextCandidate.version}`,
+      buildId: nextCandidate.buildId ?? null,
+    });
+  }
+
+  for (const entry of entries) {
     await retireReplacedLane(entry);
     await ensureLane(entry);
   }
-  const latest = typeof registry.latest === "string" ? registry.latest : releases[0].version;
-  if (latest !== latestVersion) {
-    latestVersion = latest;
-    log(`latest release is now ${latest} (new clients and update checks resolve here)`);
+
+  if (nextCurrent !== currentVersion) {
+    currentVersion = nextCurrent;
+    log(`current release is now ${currentVersion} (new clients and update checks resolve here)`);
   }
+
+  const previousCandidate = candidate;
+  candidate = nextCandidate;
+  const changed =
+    (previousCandidate?.version ?? null) !== (candidate?.version ?? null) ||
+    (previousCandidate?.status ?? null) !== (candidate?.status ?? null);
+  if (changed) {
+    if (!candidate) {
+      log(
+        previousCandidate
+          ? `candidate ${previousCandidate.version} (${previousCandidate.status ?? "unknown"}) is no longer staged`
+          : "no candidate staged",
+      );
+    } else {
+      log(
+        `candidate ${candidate.version} status=${candidate.status} — NOT current; clients keep ${currentVersion}`,
+      );
+    }
+  }
+}
+
+/** releaseStatus of a version as recorded in the registry. */
+function releaseStatusOf(version) {
+  return releaseStatuses.get(version) ?? null;
 }
 
 /**
@@ -365,35 +439,75 @@ async function retireReplacedLane(entry) {
 
 /* ── Routing decisions ────────────────────────────────────────────────── */
 
+/**
+ * Verification traffic: loopback + the staged candidate's one-time token.
+ * Deliberately narrow — it exists only while a candidate is staged (or has just
+ * been verified) and is never honoured for a remote client.
+ */
+function isVerificationRequest(request) {
+  if (legacy || !candidate) return false;
+  // "blocked" is included on purpose: after fixing the fault, the gate must be
+  // able to re-verify the candidate. The token only lets it OBSERVE the
+  // post-promotion routing — promotion itself is a separate registry write.
+  if (!["candidate", "verified", "blocked"].includes(candidate.status)) return false;
+  if (!isLoopback(request)) return false;
+  const token = request.headers[VERIFY_HEADER];
+  return typeof token === "string" && token.length > 0 && token === candidate.verifyToken;
+}
+
 async function pickLane(request, url) {
   await loadRegistry();
-  const latest = laneFor(latestVersion) ?? [...lanes.values()][0] ?? null;
-  if (!latest) return null;
+  const current = laneFor(currentVersion) ?? [...lanes.values()][0] ?? null;
+  if (!current) return null;
 
-  await latest.ready;
+  await current.ready;
 
-  // Version authority always lives on the newest release.
-  if (LATEST_ONLY_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
-    return latest;
+  /* Verification mode: answer exactly as the router WOULD once the candidate is
+     current, so the gate can test real routing decisions before they are real.
+     If the candidate lane is unavailable the request fails (503) instead of
+     silently falling back to the current release, which could make an
+     unverified candidate look verified. */
+  const verifying = isVerificationRequest(request);
+  if (verifying && !laneFor(candidate.version)) {
+    log(`WARNING: verification requested but candidate lane ${candidate.version} is unavailable`);
+    return null;
   }
+  const authorityVersion = verifying ? candidate.version : currentVersion;
+  const authority = verifying
+    ? laneFor(candidate.version)
+    : (laneFor(currentVersion) ?? current);
+  await authority.ready;
+
+  // Version authority always lives on the authoritative release.
+  if (LATEST_ONLY_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+    return authority;
+  }
+
+  if (legacy) return authority;
 
   const clients = await clientCompletedVersions();
   const clientId = parseCookies(request.headers.cookie).get(UPDATE_CLIENT_COOKIE);
   const completed = clientId ? clients.get(clientId) ?? null : null;
+  if (!completed) return authority;
 
-  if (legacy) return latest;
-
-  if (completed && completed !== latestVersion) {
-    const lane = laneFor(completed);
-    if (lane) {
-      await lane.ready;
-      return lane;
-    }
+  /* A client is always served the release they completed — that is the whole
+     invariant. A release marked BLOCKED (its promotion was refused or rolled
+     back) is the one exception: those clients move to the current release and
+     are offered it, rather than being pinned to a release that never became
+     authoritative. */
+  const lane = laneFor(completed);
+  if (lane && releaseStatusOf(completed) !== "blocked") {
+    await lane.ready;
+    return lane;
+  }
+  if (completed !== authorityVersion) {
     log(
-      `WARNING: client completed ${completed} but that release is not retained — falling back to ${latestVersion}`,
+      `WARNING: client completed ${completed} but ${
+        lane ? "that release is blocked" : "that release is not retained"
+      } — resolving to ${authorityVersion}`,
     );
   }
-  return latest;
+  return authority;
 }
 
 /* ── Proxying ─────────────────────────────────────────────────────────── */
@@ -457,6 +571,9 @@ function isLoopback(request) {
 }
 
 async function diagnostics(response) {
+  // Reflect the registry as it is right now, not as of the last proxied
+  // request: the promotion gate reads this before deciding anything.
+  await loadRegistry(true);
   const clients = await clientCompletedVersions();
   const byVersion = new Map();
   for (const version of clients.values()) {
@@ -465,10 +582,30 @@ async function diagnostics(response) {
   }
   const body = {
     legacy,
-    latest: latestVersion,
+    // `current` is authoritative; `latest` is the pre-gate alias, kept in sync.
+    current: currentVersion,
+    latest: currentVersion,
+    candidate: candidate
+      ? {
+          version: candidate.version,
+          status: candidate.status ?? null,
+          buildId: candidate.buildId ?? null,
+          verifiedAt: candidate.verification?.checkedAt ?? null,
+          blockedReason: candidate.blockedReason ?? null,
+        }
+      : null,
     publicPort: PUBLIC_PORT,
     lanes: [...lanes.values()].map((lane) => ({
       version: lane.version,
+      role:
+        lane.version === currentVersion
+          ? "current"
+          : candidate && lane.version === candidate.version
+            ? candidate.status === "blocked"
+              ? "blocked"
+              : "candidate"
+            : "retained",
+      status: releaseStatusOf(lane.version),
       port: lane.port,
       dir: path.relative(ROOT, lane.dir) || ".",
       buildId: lane.buildId,
@@ -524,12 +661,12 @@ server.on("upgrade", (request, socket) => {
 
 async function start() {
   await loadRegistry(true);
-  if (latestVersion === null) {
+  if (currentVersion === null) {
     log("ERROR: no release could be loaded — nothing to serve");
     process.exit(1);
   }
   server.listen(PUBLIC_PORT, PUBLIC_HOST, () => {
-    log(`router listening on http://${PUBLIC_HOST}:${PUBLIC_PORT} → latest release ${latestVersion}`);
+    log(`router listening on http://${PUBLIC_HOST}:${PUBLIC_PORT} → current release ${currentVersion}`);
   });
 }
 

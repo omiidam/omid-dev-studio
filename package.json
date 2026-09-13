@@ -1,13 +1,15 @@
 {
   "name": "omid-studio",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "private": true,
   "scripts": {
     "predev": "node scripts/write-sw-version.mjs",
     "dev": "next dev",
     "prebuild": "node scripts/write-sw-version.mjs",
     "build": "next build",
-    "release": "npm run build && node scripts/release-publish.mjs",
+    "release": "npm run build && node scripts/release-publish.mjs && node scripts/release-verify.mjs --promote",
+    "release:publish": "npm run build && node scripts/release-publish.mjs",
+    "release:promote": "node scripts/release-promote.mjs",
     "verify:release": "node scripts/release-verify.mjs",
     "start": "node scripts/release-server.mjs",
     "start:next": "next start -p 57500",

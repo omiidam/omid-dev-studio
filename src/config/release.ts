@@ -48,11 +48,11 @@ export const RELEASE_CATEGORY_LABELS: Record<ReleaseCategory, string> = {
 
 export const RELEASE_INFO: ReleaseInfo = {
   version: APP_VERSION,
-  previousVersion: "1.0.21",
+  previousVersion: "1.0.22",
   changes: [
     {
       category: "improvement",
-      text: "تقویت زیرساخت انتشار و بررسی خودکار ایزوله‌بودن هر نسخه پیش از عرضه",
+      text: "انتشار هر نسخه تنها پس از تأیید خودکار ایزوله‌بودن آن",
     },
   ],
 };
