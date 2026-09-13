@@ -353,6 +353,9 @@ async function loadRegistry(force = false) {
 
   legacy = false;
   releaseStatuses = new Map(releases.map((entry) => [entry.version, entry.status ?? null]));
+  pruneBlockedVersions = Array.isArray(registry.pruneBlockedVersions)
+    ? registry.pruneBlockedVersions.filter((v) => typeof v === "string")
+    : [];
 
   /* `current` is the authoritative release; a pre-gate registry used `latest`
      for the same concept. A staged candidate is NEVER current. */
@@ -612,12 +615,139 @@ async function diagnostics(response) {
       pid: lane.child?.pid ?? null,
     })),
     clients: Object.fromEntries(byVersion),
+    pruneBlocked: pruneBlockedVersions,
   };
+  return body;
+}
+
+/** Versions that exist on disk but are held from pruning by a live client. */
+let pruneBlockedVersions = [];
+
+function esc(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+/** The operator-facing view of exactly the same data `__releases` serves. */
+async function diagnosticsPage(response) {
+  const data = await diagnostics({ writeHead() {}, end() {} });
+  const now = new Date().toISOString();
+  const current = data.current ?? "—";
+  const candidateRow = data.candidate
+    ? `<tr>
+        <td>${esc(data.candidate.version)}</td>
+        <td><span class="badge ${esc(data.candidate.status)}">${esc(data.candidate.status)}</span></td>
+        <td class="mono">${esc(data.candidate.buildId)}</td>
+        <td>${esc(data.candidate.verifiedAt ?? "—")}</td>
+        <td>${esc(data.candidate.blockedReason ?? "—")}</td>
+      </tr>`
+    : `<tr><td colspan="5" class="dim">هیچ نسخه‌ی کاندیدی برای ارتقا ثبت نشده است</td></tr>`;
+
+  const laneRows = data.lanes
+    .map(
+      (lane) => `<tr>
+        <td class="mono">${esc(lane.version)}</td>
+        <td><span class="badge ${esc(lane.role)}">${esc(lane.role)}</span></td>
+        <td>${lane.pid ? `<span class="ok">فعال</span> <span class="dim">pid ${esc(lane.pid)}</span>` : `<span class="dim">غیرفعال</span>`}</td>
+        <td>${lane.role === "current" ? `<span class="ok">بله</span>` : lane.role === "blocked" ? `<span class="warn">خیر (مسدود)</span>` : `<span class="dim">—</span>`}</td>
+        <td class="mono dim">${esc(lane.port)}</td>
+        <td class="mono dim">${esc(lane.buildId)}</td>
+        <td class="mono dim">${esc(lane.dir)}</td>
+      </tr>`,
+    )
+    .join("\n");
+
+  const clientRows = Object.entries(data.clients)
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .map(
+      ([version, count]) => `<tr>
+        <td class="mono">${esc(version)}</td>
+        <td>${esc(count)}</td>
+        <td>${version === current ? `<span class="ok">به‌روز</span>` : version === "never-completed" ? `<span class="dim">هیچ</span>` : `<span class="warn">پیشنهاد به‌روزرسانی در انتظار</span>`}</td>
+        <td>${data.pruneBlocked?.includes(version) ? `<span class="warn">نگه‌داشته‌شده (کلاینت فعال)</span>` : `<span class="dim">—</span>`}</td>
+      </tr>`,
+    )
+    .join("\n");
+
+  const html = `<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>OMID Studio — عیب‌یابی انتشار</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #060609; color: #f3f3f7;
+    font-family: Vazirmatn, ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px; padding: 2rem 1.5rem 3rem;
+  }
+  main { max-width: 68rem; margin-inline: auto; }
+  h1 { font-size: 1.05rem; font-weight: 600; margin: 0; }
+  h1 small { color: #8d8d9f; font-weight: 400; font-size: 0.75rem; margin-inline-start: 0.6rem; }
+  h2 { font-size: 0.85rem; color: #4cc2ff; margin: 2.2rem 0 0.7rem; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: start; color: #7a7a88; font-weight: 500; font-size: 0.72rem; padding: 0.45rem 0.6rem; border-bottom: 1px solid rgb(255 255 255 / 0.12); }
+  td { padding: 0.5rem 0.6rem; border-bottom: 1px solid rgb(255 255 255 / 0.06); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size: 0.75rem; }
+  .dim { color: #8d8d9f; }
+  .ok { color: #3bcf8f; }
+  .warn { color: #f2838f; }
+  .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.7rem; border: 1px solid rgb(255 255 255 / 0.14); color: #c8c8d4; }
+  .badge.current, .badge.promoted { color: #3bcf8f; border-color: rgb(59 207 143 / 0.4); }
+  .badge.candidate, .badge.verified { color: #4cc2ff; border-color: rgb(76 194 255 / 0.4); }
+  .badge.blocked, .badge.previous { color: #f2838f; border-color: rgb(242 131 143 / 0.35); }
+  .badge.retained { color: #8d8d9f; }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.4rem; }
+  footer { margin-top: 2.5rem; color: #7a7a88; font-size: 0.7rem; border-top: 1px solid rgb(255 255 255 / 0.08); padding-top: 0.8rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>عیب‌یابی سیستم انتشار <small>فقط حلقه‌ی محلی — عمومی نیست</small></h1>
+    <span class="mono dim">${esc(now)}</span>
+  </header>
+
+  <h2>ثبت نسخه‌ها</h2>
+  <p class="dim">نسخه‌ی جاری: <span class="mono" style="color:#3bcf8f">${esc(current)}</span>${data.legacy ? ` · <span class="warn">حالت میراث (بدون جداسازی نسخه)</span>` : ""}</p>
+  <table>
+    <thead><tr><th>نسخه</th><th>وضعیت</th><th>شناسه ساخت</th><th>زمان تأیید</th><th>دلیل انسداد</th></tr></thead>
+    <tbody>${candidateRow}</tbody>
+  </table>
+
+  <h2>لِین‌های انتشار (لِین = یک نسخه‌ی اجراشونده)</h2>
+  <table>
+    <thead><tr><th>نسخه</th><th>نقش</th><th>وضعیت فرایند</th><th>واجد ارائه به کلاینت</th><th>پورت</th><th>شناسه ساخت</th><th>مسیر</th></tr></thead>
+    <tbody>
+${laneRows}
+    </tbody>
+  </table>
+
+  <h2>خلاصه‌ی وضعیت کلاینت‌ها</h2>
+  <table>
+    <thead><tr><th>نسخه‌ی تکمیل‌شده</th><th>تعداد کلاینت</th><th>وضعیت به‌روزرسانی</th><th>وضعیت حذف</th></tr></thead>
+    <tbody>
+${clientRows || `<tr><td colspan="4" class="dim">هیچ کلاینتی ثبت نشده است</td></tr>`}
+    </tbody>
+  </table>
+
+  <footer>خروجی JSON همان داده: <span class="mono">/__releases</span> · داده‌ها مستقیماً از منابع اصلی خوانده می‌شوند — بدون کش و بدون داده‌ی ساختگی</footer>
+</main>
+</body>
+</html>`;
   response.writeHead(200, {
-    "content-type": "application/json; charset=utf-8",
+    "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store",
+    "x-robots-tag": "noindex, nofollow",
   });
-  response.end(`${JSON.stringify(body, null, 2)}\n`);
+  response.end(html);
 }
 
 /* ── Server ───────────────────────────────────────────────────────────── */
@@ -633,7 +763,26 @@ const server = http.createServer((request, response) => {
           response.end("loopback only");
           return;
         }
-        await diagnostics(response);
+        await diagnostics(response).then((body) => {
+          response.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          response.end(`${JSON.stringify(body, null, 2)}\n`);
+        });
+        return;
+      }
+
+      // Operator diagnostics page — same data, human-readable, RTL.
+      // Same socket-level loopback guard: nothing about this route is
+      // reachable from a non-local interface.
+      if (url.pathname === "/_diagnostics") {
+        if (!isLoopback(request)) {
+          response.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+          response.end("loopback only");
+          return;
+        }
+        await diagnosticsPage(response);
         return;
       }
 

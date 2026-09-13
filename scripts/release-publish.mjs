@@ -55,7 +55,7 @@
  *     node scripts/release-publish.mjs
  */
 
-import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -68,6 +68,7 @@ import {
   readArtifactBuildId,
   readClientVersions,
   readVersionFromSource,
+  releaseDir as artifactDirOf,
   updateRegistry,
 } from "./lib/release-registry.mjs";
 
@@ -77,11 +78,14 @@ const ARTIFACTS = ["package.json", "next.config.ts", "public", ".next"];
 /** First internal port handed to a release lane (the public port is 57500). */
 const BASE_PORT = Number(process.env.OMID_STUDIO_RELEASE_BASE_PORT ?? 57510);
 /** How many releases to retain once nothing references them any more. */
-const KEEP = Number(process.env.OMID_STUDIO_RELEASES_KEEP ?? 4);
+const KEEP = Number(process.env.OMID_STUDIO_RELEASES_KEEP ?? 3);
 
 function log(...parts) {
   console.log("[release-publish]", ...parts);
 }
+
+/** Versions kept from pruning by a live client — surfaced for diagnostics. */
+let nextRegistryPruneBlocked = [];
 
 function fail(message) {
   console.error("[release-publish] ERROR:", message);
@@ -171,14 +175,24 @@ async function main() {
     const entries = new Map(registry.releases.map((entry) => [entry.version, entry]));
     const bootstrap = !registry.current;
 
+    /* A re-published CURRENT release is a redeploy, not a new candidate:
+       staging it as a pending candidate of itself would make the promotion
+       gate verify a release that is already authoritative (and block it,
+       because "current ≠ candidate" can never hold). The artifact is simply
+       replaced under the same version — the router swaps its lane on the
+       changed BUILD_ID — and current/candidate stay exactly as they were. */
+    const redeployOfCurrent = !bootstrap && registry.current === version;
     entries.set(version, {
       ...(entries.get(version) ?? {}),
       version,
       buildId,
       dir,
       publishedAt,
-      status: bootstrap ? "current" : "candidate",
+      status: bootstrap ? "current" : redeployOfCurrent ? "current" : "candidate",
     });
+    if (redeployOfCurrent && registry.candidate && registry.candidate.version === version) {
+      registry.candidate = null;
+    }
 
     /* Deterministic ports, newest first, reused across publishes so lanes and
        their artifacts stay stable. */
@@ -190,22 +204,58 @@ async function main() {
     const keep = new Set([version, ...clientVersions]);
     if (registry.current) keep.add(registry.current);
 
+    /* Retention: the latest KEEP versions plus anything the pipeline must
+       keep (current, candidate) or that a real client still runs. A version
+       beyond the latest-KEEP window is pruned ONLY when no real client has it
+       as their completed version — pruning a release a client still runs
+       would strand that client on a different build, i.e. exactly the mixing
+       this pipeline forbids. Pinned wins over the window; the result is
+       recorded so the diagnostics page can show what was held back. */
+    const pruneBlocked = [];
     let ordered = [...entries.values()].sort((a, b) => compareVersions(b.version, a.version));
+    const latestThree = new Set(ordered.slice(0, KEEP).map((entry) => entry.version));
     const retained = [];
     for (const entry of ordered) {
-      if (keep.has(entry.version) || retained.length < KEEP) {
+      if (latestThree.has(entry.version) || keep.has(entry.version)) {
         retained.push(entry);
         continue;
       }
+      let prunedAny = false;
       for (const staleDir of await artifactDirsFor(entry.version)) {
         const removed = await rm(staleDir, { recursive: true, force: true }).then(
           () => true,
           () => false,
         );
         if (removed) log(`pruned unreferenced release ${path.basename(staleDir)}`);
+        prunedAny = prunedAny || removed;
+      }
+      if (!prunedAny) pruneBlocked.push(entry.version);
+    }
+    for (const pinnedVersion of keep) {
+      if (entries.has(pinnedVersion) && !retained.some((r) => r.version === pinnedVersion)) {
+        // Pinned by a live client but its registry entry vanished — restore it
+        // so the client keeps resolving to its own release.
+        retained.push(entries.get(pinnedVersion));
+        pruneBlocked.push(pinnedVersion);
       }
     }
-    ordered = retained;
+    ordered = retained.sort((a, b) => compareVersions(b.version, a.version));
+    nextRegistryPruneBlocked = pruneBlocked;
+    /* Sweep orphaned artifact directories: versions with no registry entry,
+       no client and no pipeline role (e.g. left behind by an older registry
+       shape). Never touches a directory the registry still references. */
+    const referencedDirs = new Set(ordered.map((entry) => path.basename(artifactDirOf(entry))));
+    try {
+      for (const name of await readdir(RELEASES_ROOT)) {
+        if (referencedDirs.has(name) || name === version || name.endsWith(`.staging-${process.pid}`)) continue;
+        const orphanVersion = name.split("+")[0];
+        if (keep.has(orphanVersion)) continue;
+        const removed = await rm(path.join(RELEASES_ROOT, name), { recursive: true, force: true }).then(() => true, () => false);
+        if (removed) log(`pruned orphaned artifact directory ${name}`);
+      }
+    } catch {
+      /* releases root missing — nothing to sweep */
+    }
 
     const used = new Set();
     ordered = ordered.map((entry, index) => {
@@ -220,9 +270,13 @@ async function main() {
       ...registry,
       releases: ordered,
       current: bootstrap ? version : registry.current,
+      pruneBlockedVersions: nextRegistryPruneBlocked,
     };
     if (bootstrap) {
       log(`BOOTSTRAP: no current release existed — ${version} becomes current without a gate`);
+      next.candidate = null;
+    } else if (redeployOfCurrent) {
+      log(`REDEPLOY: ${version} is the current release — artifact replaced, current unchanged, no candidate staged`);
       next.candidate = null;
     } else {
       next.candidate = {

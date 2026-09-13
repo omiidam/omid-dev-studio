@@ -90,6 +90,13 @@ export function ServiceWorkerRegistration() {
   const [postponed, setPostponed] = useState(false);
   const updateButtonRef = useRef<HTMLButtonElement>(null);
   const mountedRef = useRef(true);
+  /** The card container — boundary for the focus trap. */
+  const dialogRef = useRef<HTMLDivElement>(null);
+  /** Element to restore focus to when the offer unmounts. */
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  /** Last message pushed to the live region — announced only on CHANGE. */
+  const [announcement, setAnnouncement] = useState<string>("");
+  const lastAnnouncedRef = useRef<string>("");
 
   useEffect(() => {
     mountedRef.current = true;
@@ -212,13 +219,6 @@ export function ServiceWorkerRegistration() {
     };
   }, [fetchStatus]);
 
-  /* ── Focus the primary action once the offer renders ── */
-  useEffect(() => {
-    if (phase === "offer" || phase === "error") {
-      updateButtonRef.current?.focus();
-    }
-  }, [phase, postponed]);
-
   const reloadOnce = useCallback(() => {
     if (reloadRequested) return;
     reloadRequested = true;
@@ -317,11 +317,85 @@ export function ServiceWorkerRegistration() {
     setPhase("offer");
   }, []);
 
+  /** Stable reference so the keydown handler can always call the latest. */
+  const postponeRef = useRef(postpone);
+  useEffect(() => {
+    postponeRef.current = postpone;
+  }, [postpone]);
+
   const showCard =
     status !== null &&
     status.updateRequired &&
     (phase === "offer" || phase === "updating" || phase === "activating" || phase === "error") &&
     !postponed;
+
+  /* ── Dialog semantics (a11y) ──
+     The card is a non-modal dialog: the page stays usable by design, so the
+     rest of the page is NOT inert — but keyboard focus must not get LOST in
+     it. While the card is shown, Tab/Shift+Tab cycle within it (trap), the
+     offer focus is restored to the previously focused element on dismissal,
+     and Escape postpones (the same semantics as the visible «بعداً»). */
+  useEffect(() => {
+    if (!showCard) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    updateButtonRef.current?.focus();
+
+    const dialog = dialogRef.current;
+    const focusables = () =>
+      dialog
+        ? Array.from(
+            dialog.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+        : [];
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        postponeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !dialog?.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog?.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      // Restore focus to where the user was before the offer appeared.
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [showCard]);
+
+  /* Announce phase changes exactly once per state transition — no repeated
+     announcements from re-renders, no duplicate live regions. */
+  useEffect(() => {
+    if (!showCard) return;
+    const message =
+      phase === "updating"
+        ? "در حال نصب به‌روزرسانی"
+        : phase === "activating"
+          ? "در حال فعال‌سازی نسخه جدید"
+          : phase === "error"
+            ? "خطا در اعمال به‌روزرسانی — می‌توانید دوباره تلاش کنید"
+            : "";
+    if (message && message !== lastAnnouncedRef.current) {
+      lastAnnouncedRef.current = message;
+      setAnnouncement(message);
+    }
+  }, [phase, showCard]);
 
   /**
    * The changelog must describe the release being OFFERED. This page may be an
@@ -366,8 +440,10 @@ export function ServiceWorkerRegistration() {
           className="fixed bottom-4 start-4 z-[80] w-[calc(100vw-2rem)] max-w-sm sm:bottom-6 sm:start-6"
         >
           <div
+            ref={dialogRef}
             role="dialog"
-            aria-label="به‌روزرسانی نسخه"
+            aria-labelledby="update-offer-title"
+            aria-describedby="update-offer-description"
             className="relative overflow-hidden rounded-2xl border border-line-strong bg-ink-2/95 shadow-[0_20px_60px_-15px_rgb(0_0_0/0.6)] backdrop-blur-xl"
           >
             {/* corner glows — violet → cyan */}
@@ -381,6 +457,13 @@ export function ServiceWorkerRegistration() {
             />
 
             <div className="relative p-4 sm:p-5">
+              {/* Single polite live region — announces progress/error phase
+                  changes once per transition (guarded by lastAnnouncedRef);
+                  the initial offer needs no announcement beyond the dialog
+                  itself being named and described. */}
+              <div aria-live="polite" role="status" className="sr-only">
+                {announcement}
+              </div>
               {/* header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -407,10 +490,10 @@ export function ServiceWorkerRegistration() {
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-[14px] font-semibold text-paper">
+                    <h3 id="update-offer-title" className="text-[14px] font-semibold text-paper">
                       نسخه‌ی جدید در دسترس است
                     </h3>
-                    <p className="mt-0.5 text-[12px] text-muted">
+                    <p id="update-offer-description" className="mt-0.5 text-[12px] text-muted">
                       می‌توانید همین حالا به‌روزرسانی کنید یا بعداً
                     </p>
                   </div>
