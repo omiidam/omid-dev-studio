@@ -55,7 +55,7 @@
  *     node scripts/release-publish.mjs
  */
 
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -65,6 +65,7 @@ import {
   compareVersions,
   exists,
   generateVerifyToken,
+  readArtifactBuildId,
   readClientVersions,
   readVersionFromSource,
   updateRegistry,
@@ -93,6 +94,18 @@ async function main() {
   const fromDir = process.env.OMID_STUDIO_PUBLISH_FROM
     ? path.resolve(ROOT, process.env.OMID_STUDIO_PUBLISH_FROM)
     : ROOT;
+  /* Refuse to publish from inside the releases root. `from` and `to` must be
+     different trees: publishing an artifact directory into itself deletes its
+     own .next before the copy reads it, which guts the live artifact (this
+     actually happened — the release's lane vanished and clients fell back to
+     another build). A backfill sources from a scratch build or the project, so
+     it is unaffected. */
+  const relativeFrom = path.relative(RELEASES_ROOT, fromDir);
+  if (relativeFrom === "" || (!relativeFrom.startsWith("..") && !path.isAbsolute(relativeFrom))) {
+    fail(
+      `refusing to publish from ${path.relative(ROOT, fromDir) || "."} — it is inside ${path.relative(ROOT, RELEASES_ROOT)}; publish from the project root or a separate build directory`,
+    );
+  }
   const version =
     process.env.OMID_STUDIO_PUBLISH_VERSION ?? (await readVersionFromSource(fromDir));
   if (!version) fail("could not parse APP_VERSION from src/config/version.ts");
@@ -105,7 +118,10 @@ async function main() {
   /* The directory name is the version. When a lane is already serving that
      version its directory is its working directory and cannot be replaced on
      Windows (EBUSY), so the re-published build gets its own directory — the
-     registry is what decides which artifact a version resolves to. */
+     registry is what decides which artifact a version resolves to. The copy
+     also lands in a SIBLING staging directory first and is renamed into place
+     only when complete: a publish that dies halfway leaves the previous
+     artifact intact instead of a half-written one that looks published. */
   let releaseDir = path.join(RELEASES_ROOT, version);
   if (await exists(releaseDir)) {
     await rm(releaseDir, { recursive: true, force: true }).catch(() => undefined);
@@ -114,18 +130,37 @@ async function main() {
       log(`release ${version} is currently being served — publishing this build to ${path.basename(releaseDir)}`);
     }
   }
+  const stagingDir = `${releaseDir}.staging-${process.pid}`;
+  await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
   await rm(releaseDir, { recursive: true, force: true }).catch(() => undefined);
-  await mkdir(releaseDir, { recursive: true });
-  for (const artifact of ARTIFACTS) {
-    const source = path.join(fromDir, artifact);
-    if (!(await exists(source))) continue;
-    await cp(source, path.join(releaseDir, artifact), { recursive: true });
+  await mkdir(stagingDir, { recursive: true });
+  try {
+    for (const artifact of ARTIFACTS) {
+      const source = path.join(fromDir, artifact);
+      if (!(await exists(source))) continue;
+      await cp(source, path.join(stagingDir, artifact), { recursive: true });
+    }
+    await writeFile(
+      path.join(stagingDir, "RELEASE.json"),
+      `${JSON.stringify({ version, buildId, publishedAt: new Date().toISOString() }, null, 2)}\n`,
+      "utf8",
+    );
+    /* Sanity gate before the swap: an artifact that cannot serve its release
+       must never replace a good one (the registry alone decides routing, so a
+       gutted directory would silently strand its clients). */
+    const stagedBuildId = await readArtifactBuildId(stagingDir);
+    if (stagedBuildId !== buildId) {
+      throw new Error(
+        `staged artifact is incomplete (BUILD_ID ${stagedBuildId ?? "missing"} ≠ ${buildId})`,
+      );
+    }
+    await rename(stagingDir, releaseDir);
+  } catch (error) {
+    await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+    fail(
+      `${error?.message ?? error} — the previous artifact at ${path.relative(ROOT, releaseDir)} was left untouched`,
+    );
   }
-  await writeFile(
-    path.join(releaseDir, "RELEASE.json"),
-    `${JSON.stringify({ version, buildId, publishedAt: new Date().toISOString() }, null, 2)}\n`,
-    "utf8",
-  );
   log(`published artifact ${version} (build ${buildId}) → ${path.relative(ROOT, releaseDir)}`);
 
   const dir = `./.releases/${path.basename(releaseDir)}`;
