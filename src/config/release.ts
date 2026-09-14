@@ -48,11 +48,15 @@ export const RELEASE_CATEGORY_LABELS: Record<ReleaseCategory, string> = {
 
 export const RELEASE_INFO: ReleaseInfo = {
   version: APP_VERSION,
-  previousVersion: "1.0.26",
+  previousVersion: "1.0.27",
   changes: [
     {
-      category: "fix",
-      text: "جلوگیری از ثبت همزمان یک نسخه به‌عنوان کاندید و نسخه‌ی جاری هنگام انتشار مجدد",
+      category: "new",
+      text: "پنل مدیریت پروژه‌ها (فاز ۱): داشبورد، فهرست پروژه‌ها با جستجو و فیلتر، صفحه‌ی جزئیات، فرم ایجاد و ویرایش",
+    },
+    {
+      category: "new",
+      text: "بخش‌های مشتریان، فایل‌ها، مالی و تنظیمات در پنل مدیریت",
     },
   ],
 };

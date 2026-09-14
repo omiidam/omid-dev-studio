@@ -12,9 +12,25 @@ const NAV = [
   {
     href: "/admin/projects",
     label: "درخواست‌های پروژه",
-    match: (path: string) => path.startsWith("/admin/projects"),
+    match: (path: string) =>
+      path.startsWith("/admin/projects") && !path.startsWith("/admin/manage"),
   },
 ];
+
+/** Management-panel section (Phase 1) — rendered as its own nav group. */
+const MANAGE_NAV = [
+  { href: "/admin/manage", label: "داشبورد" },
+  { href: "/admin/manage/projects", label: "پروژه‌ها" },
+  { href: "/admin/manage/clients", label: "مشتریان" },
+  { href: "/admin/manage/files", label: "فایل‌ها" },
+  { href: "/admin/manage/finance", label: "مالی" },
+  { href: "/admin/manage/settings", label: "تنظیمات" },
+] as const;
+
+function isManageActive(pathname: string, href: string): boolean {
+  if (href === "/admin/manage") return pathname === "/admin/manage";
+  return pathname.startsWith(href);
+}
 
 /**
  * Admin chrome — top bar + navigation for the management area. Stays within
@@ -113,6 +129,52 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-violet to-cyan"
                   />
                 )}
+              </Link>
+            );
+          })}
+          <span aria-hidden="true" className="mx-2 hidden h-4 w-px bg-line md:block" />
+          {MANAGE_NAV.map((item) => {
+            const active = isManageActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "relative hidden -mb-px items-center gap-2 border-b-2 border-transparent px-3 py-3.5 text-[13px] font-medium transition-colors duration-200 md:inline-flex",
+                  active
+                    ? "border-transparent text-cyan"
+                    : "text-muted hover:text-paper",
+                )}
+              >
+                {item.label}
+                {active && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-violet to-cyan"
+                  />
+                )}
+              </Link>
+            );
+          })}
+        </div>
+        {/* manage sub-nav for narrow screens (md:hidden) */}
+        <div className="flex items-center gap-1 overflow-x-auto px-4 pb-2 md:hidden sm:px-6">
+          {MANAGE_NAV.map((item) => {
+            const active = isManageActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium ring-1 ring-inset transition-colors duration-200",
+                  active
+                    ? "bg-cyan/15 text-cyan ring-cyan/25"
+                    : "bg-ink-3 text-muted ring-line hover:text-paper",
+                )}
+              >
+                {item.label}
               </Link>
             );
           })}

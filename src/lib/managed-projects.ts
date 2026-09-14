@@ -1,0 +1,162 @@
+/**
+ * Canonical data contract for the Project Management Panel (Phase 1 —
+ * frontend only).
+ *
+ * Mirrors the conventions of `project-schema.ts`: Persian appears ONLY as UI
+ * labels; values are always language-neutral English codes, so the Phase 2
+ * backend can adopt this shape directly without renaming anything in the UI.
+ *
+ * Phase 1 note: nothing here touches the backend. The mock seed lives in
+ * `data/admin/projects.ts` and is the ONLY place temporary demo data exists.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Status — the managed-project lifecycle.
+ * ------------------------------------------------------------------------ */
+
+export const MANAGED_PROJECT_STATUSES = [
+  "negotiating",
+  "pending",
+  "in_progress",
+  "completed",
+  "halted",
+] as const;
+
+export type ManagedProjectStatus = (typeof MANAGED_PROJECT_STATUSES)[number];
+
+/** Persian labels — UI presentation only. */
+export const MANAGED_STATUS_LABELS: Record<ManagedProjectStatus, string> = {
+  negotiating: "در حال مذاکره",
+  pending: "در انتظار شروع",
+  in_progress: "در حال انجام",
+  completed: "تکمیل شده",
+  halted: "متوقف شده",
+};
+
+/** Pill styles — same token family as `project-status.ts`, dark-mode safe. */
+export const MANAGED_STATUS_STYLE: Record<ManagedProjectStatus, string> = {
+  negotiating: "bg-violet/10 text-violet ring-violet/25",
+  pending: "bg-blue/10 text-blue ring-blue/25",
+  in_progress: "bg-cyan/10 text-cyan ring-cyan/25",
+  completed: "bg-success/10 text-success ring-success/25",
+  halted: "bg-ink-3 text-muted ring-line-strong/40",
+};
+
+/* ---------------------------------------------------------------------------
+ * Payment status
+ * ------------------------------------------------------------------------ */
+
+export const PAYMENT_STATUSES = ["unpaid", "advance", "partial", "paid"] as const;
+
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  unpaid: "پرداخت نشده",
+  advance: "پیش‌پرداخت",
+  partial: "تسویه بخشی",
+  paid: "تسویه‌شده",
+};
+
+export const PAYMENT_STATUS_STYLE: Record<PaymentStatus, string> = {
+  unpaid: "bg-danger/10 text-danger ring-danger/25",
+  advance: "bg-blue/10 text-blue ring-blue/25",
+  partial: "bg-violet/10 text-violet ring-violet/25",
+  paid: "bg-success/10 text-success ring-success/25",
+};
+
+/* ---------------------------------------------------------------------------
+ * Project type — reuses the public inquiry taxonomy so both surfaces stay
+ * aligned without a second list drifting apart.
+ * ------------------------------------------------------------------------ */
+
+export type ManagedProjectType =
+  | "website"
+  | "webapp"
+  | "saas"
+  | "ecommerce"
+  | "dashboard"
+  | "other";
+
+export const MANAGED_TYPE_LABELS: Record<ManagedProjectType, string> = {
+  website: "وب‌سایت",
+  webapp: "وب‌اپلیکیشن",
+  saas: "محصول SaaS",
+  ecommerce: "فروشگاه اینترنتی",
+  dashboard: "داشبورد / پنل مدیریت",
+  other: "چیز دیگر",
+};
+
+/* ---------------------------------------------------------------------------
+ * Record shape
+ * ------------------------------------------------------------------------ */
+
+export interface ManagedMilestone {
+  id: string;
+  title: string;
+  dueDate?: string;
+  done: boolean;
+}
+
+export interface ManagedTimelineEvent {
+  id: string;
+  date: string;
+  title: string;
+  description?: string;
+}
+
+export interface ManagedActivity {
+  id: string;
+  at: string;
+  text: string;
+}
+
+export interface ManagedFileItem {
+  id: string;
+  name: string;
+  size: string;
+  kind: string;
+  updatedAt: string;
+}
+
+/** Everything the create/edit form collects, exactly. */
+export interface ManagedProjectInput {
+  name: string;
+  client: string;
+  type: ManagedProjectType;
+  description: string;
+  status: ManagedProjectStatus;
+  progress: number;
+  startDate: string;
+  deadline: string;
+  budget: number;
+  payment: PaymentStatus;
+  demoUrl: string;
+  githubUrl: string;
+  technologies: string[];
+  notes: string;
+}
+
+export interface ManagedProject extends ManagedProjectInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  timeline: ManagedTimelineEvent[];
+  milestones: ManagedMilestone[];
+  activity: ManagedActivity[];
+  files: ManagedFileItem[];
+}
+
+/** Options for select controls (code value → Persian label). */
+export const managedStatusOptions = MANAGED_PROJECT_STATUSES.map((value) => ({
+  value,
+  label: MANAGED_STATUS_LABELS[value],
+}));
+
+export const managedPaymentOptions = PAYMENT_STATUSES.map((value) => ({
+  value,
+  label: PAYMENT_STATUS_LABELS[value],
+}));
+
+export const managedTypeOptions = (
+  Object.keys(MANAGED_TYPE_LABELS) as ManagedProjectType[]
+).map((value) => ({ value, label: MANAGED_TYPE_LABELS[value] }));
