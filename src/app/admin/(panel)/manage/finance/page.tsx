@@ -1,6 +1,10 @@
 "use client";
 
-import { listManagedProjects } from "@/lib/managed-project-store";
+import { useMemo } from "react";
+import {
+  MANAGED_LIST_ERROR,
+  useManagedProjects,
+} from "@/lib/managed-project-store";
 import { toFaDigits } from "@/lib/utils";
 import { ManagedPaymentBadge } from "@/components/admin/managed/badges";
 
@@ -9,13 +13,20 @@ function formatAmount(amount: number): string {
   return `${toFaDigits(amount.toLocaleString("en-US"))} دلار`;
 }
 
-/** Phase 1 placeholder — financial overview derived from the demo projects. */
+/** Financial overview derived from the real API-backed projects. */
 export default function ManageFinancePage() {
-  const projects = listManagedProjects();
-  const total = projects.reduce((sum, project) => sum + project.budget, 0);
-  const settled = projects
-    .filter((project) => project.payment === "paid")
-    .reduce((sum, project) => sum + project.budget, 0);
+  const { projects, error, loading } = useManagedProjects();
+
+  const { total, settled, active } = useMemo(() => {
+    if (!projects) return { total: 0, settled: 0, active: 0 };
+    return {
+      total: projects.reduce((sum, project) => sum + project.budget, 0),
+      settled: projects
+        .filter((project) => project.payment === "paid")
+        .reduce((sum, project) => sum + project.budget, 0),
+      active: projects.filter((p) => p.status === "in_progress").length,
+    };
+  }, [projects]);
 
   return (
     <div className="space-y-6">
@@ -28,6 +39,24 @@ export default function ManageFinancePage() {
           نمای کلی مبالغ پروژه‌ها — مدیریت مالی کامل در فاز بعد.
         </p>
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-danger/30 bg-danger/5 px-5 py-4 text-[13px] text-danger"
+        >
+          {MANAGED_LIST_ERROR}
+        </div>
+      )}
+      {loading && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-2xl border border-line bg-ink-2/60 px-5 py-4 text-[13px] text-muted"
+        >
+          در حال دریافت…
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-2xl border border-line bg-ink-2/80 p-5">
@@ -51,7 +80,7 @@ export default function ManageFinancePage() {
         <div className="rounded-2xl border border-line bg-ink-2/80 p-5">
           <p className="text-[11px] font-medium text-muted">پروژه‌های فعال</p>
           <p className="mt-2 text-2xl font-semibold tracking-tight text-cyan">
-            {toFaDigits(projects.filter((p) => p.status === "in_progress").length)}
+            {toFaDigits(active)}
           </p>
         </div>
       </div>
@@ -67,7 +96,7 @@ export default function ManageFinancePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {projects.map((project) => (
+              {(projects ?? []).map((project) => (
                 <tr key={project.id} className="hover:bg-ink-3/50">
                   <td className="px-5 py-3.5 text-[13px] font-medium text-paper">
                     {project.name}

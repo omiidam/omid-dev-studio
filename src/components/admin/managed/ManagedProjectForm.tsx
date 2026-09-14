@@ -13,7 +13,12 @@ import {
   managedStatusOptions,
   managedTypeOptions,
 } from "@/lib/managed-projects";
-import { emptyProject, createManagedProject, updateManagedProject } from "@/lib/managed-project-store";
+import { emptyProject } from "@/lib/managed-project-store";
+import {
+  createManagedProjectViaApi,
+  updateManagedProjectViaApi,
+  ManagedProjectApiError,
+} from "@/lib/managed-project-client";
 import { toFaDigits } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -22,10 +27,10 @@ const inputClasses =
 const labelClasses = "block text-[12px] font-medium text-soft";
 
 /**
- * Create/edit form for managed projects — Phase 1, frontend-only submission.
- * The same component serves both directions: `project` absent → create,
- * present → edit. Submission writes to the in-memory store and navigates to
- * the detail page; no backend call exists yet.
+ * Create/edit form for managed projects. The same component serves both
+ * directions: `project` absent → create, present → edit. Submission goes to
+ * the real authenticated API (Phase 3); the backend is authoritative — the
+ * UI navigates only after a confirmed server response.
  */
 export function ManagedProjectForm({
   project,
@@ -56,6 +61,7 @@ export function ManagedProjectForm({
   );
   const [techDraft, setTechDraft] = useState(project?.technologies.join("، ") ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   function set<K extends keyof ManagedProjectInput>(
     key: K,
@@ -64,8 +70,9 @@ export function ManagedProjectForm({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (submitting) return; // no duplicate submissions
     const name = form.name.trim();
     const client = form.client.trim();
     if (!name || !client) {
@@ -88,13 +95,21 @@ export function ManagedProjectForm({
       technologies,
     };
 
-    // Phase-1 seam: swap these two calls for the Phase 2 API and nothing
-    // else in this component changes.
-    const saved = isEdit && project
-      ? updateManagedProject(project.id, input)
-      : createManagedProject(input);
-
-    router.push(`/admin/manage/projects/${saved?.id ?? ""}`);
+    setSubmitting(true);
+    try {
+      const saved = isEdit && project
+        ? await updateManagedProjectViaApi(project.id, input)
+        : await createManagedProjectViaApi(input);
+      router.push(`/admin/manage/projects/${saved.id}`);
+      router.refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof ManagedProjectApiError
+          ? cause.message
+          : "در ذخیره‌ی پروژه مشکلی پیش آمد.",
+      );
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -132,7 +147,10 @@ export function ManagedProjectForm({
       </div>
 
       <form
-        onSubmit={(event) => void handleSubmit(event)}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSubmit(event);
+        }}
         className="rounded-2xl border border-line bg-ink-2/80"
       >
         <div className="grid gap-5 p-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -364,9 +382,39 @@ export function ManagedProjectForm({
         <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-4">
           <button
             type="submit"
-            className="h-10 rounded-xl bg-gradient-to-r from-violet to-cyan px-5 text-[13px] font-semibold text-ink transition-opacity duration-200 hover:opacity-90"
+            disabled={submitting}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-violet to-cyan px-5 text-[13px] font-semibold text-ink transition-opacity duration-200 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isEdit ? "ذخیره تغییرات" : "ایجاد پروژه"}
+            {submitting && (
+              <svg
+                aria-hidden="true"
+                className="size-3.5 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="currentColor"
+                  strokeOpacity="0.35"
+                  strokeWidth="3"
+                />
+                <path
+                  d="M21 12a9 9 0 0 0-9-9"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+            {submitting
+              ? isEdit
+                ? "در حال ذخیره…"
+                : "در حال ایجاد…"
+              : isEdit
+                ? "ذخیره تغییرات"
+                : "ایجاد پروژه"}
           </button>
           <a
             href={

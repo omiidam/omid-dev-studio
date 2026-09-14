@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { toFaDigits } from "@/lib/utils";
-import { getManagedProjectStats, listManagedProjects } from "@/lib/managed-project-store";
+import {
+  MANAGED_LIST_ERROR,
+  computeManagedProjectStats,
+  useManagedProjects,
+} from "@/lib/managed-project-store";
 import {
   ManagedProgress,
   ManagedStatusBadge,
@@ -12,11 +16,39 @@ const CARD_TONES = ["text-paper", "text-cyan", "text-success", "text-blue"];
 
 /**
  * Management dashboard — summary cards plus the most recently touched
- * projects. Purely frontend: numbers come from the Phase-1 in-memory store.
+ * projects. Numbers come from the real authenticated API (Phase 3); the
+ * Phase-1 visual design is unchanged.
  */
 export function ManagedDashboard() {
-  const stats = getManagedProjectStats();
-  const recent = listManagedProjects().slice(0, 5);
+  const { projects, error } = useManagedProjects();
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <Header />
+        <div
+          role="alert"
+          className="rounded-2xl border border-danger/30 bg-danger/5 px-5 py-4 text-[13px] text-danger"
+        >
+          {MANAGED_LIST_ERROR}
+        </div>
+      </div>
+    );
+  }
+
+  if (projects === null) {
+    return (
+      <div className="space-y-8">
+        <Header />
+        <DashboardSkeleton />
+      </div>
+    );
+  }
+
+  const stats = computeManagedProjectStats(projects);
+  const recent = [...projects]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 5);
 
   const cards = [
     { label: "کل پروژه‌ها", value: stats.total },
@@ -27,16 +59,7 @@ export function ManagedDashboard() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="kicker">پنل مدیریت پروژه‌ها</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-paper">
-          داشبورد
-        </h1>
-        <p className="mt-1.5 text-[13px] text-muted">
-          نمای کلی از وضعیت پروژه‌های جاری استودیو.
-        </p>
-      </div>
-
+      <Header />
       {/* summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((card, index) => (
@@ -106,6 +129,36 @@ export function ManagedDashboard() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+function Header() {
+  return (
+    <div>
+      <p className="kicker">پنل مدیریت پروژه‌ها</p>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-paper">
+        داشبورد
+      </h1>
+      <p className="mt-1.5 text-[13px] text-muted">
+        نمای کلی از وضعیت پروژه‌های جاری استودیو.
+      </p>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((index) => (
+          <div
+            key={index}
+            className="h-24 animate-pulse rounded-2xl border border-line bg-ink-2/60"
+          />
+        ))}
+      </div>
+      <div className="h-64 animate-pulse rounded-2xl border border-line bg-ink-2/60" />
     </div>
   );
 }

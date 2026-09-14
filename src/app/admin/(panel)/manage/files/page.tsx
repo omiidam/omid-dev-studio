@@ -1,13 +1,21 @@
 "use client";
 
-import { listManagedProjects } from "@/lib/managed-project-store";
+import { useMemo } from "react";
+import {
+  MANAGED_LIST_ERROR,
+  useManagedProjects,
+} from "@/lib/managed-project-store";
 import { toFaDigits } from "@/lib/utils";
 
 export default function ManageFilesPage() {
-  const projects = listManagedProjects();
-  const files = projects.flatMap((project) =>
-    project.files.map((file) => ({ ...file, project: project.name })),
-  );
+  const { projects, error, loading } = useManagedProjects();
+
+  const files = useMemo(() => {
+    if (!projects) return [];
+    return projects.flatMap((project) =>
+      project.files.map((file) => ({ ...file, project: project.name })),
+    );
+  }, [projects]);
 
   return (
     <div className="space-y-6">
@@ -20,6 +28,24 @@ export default function ManageFilesPage() {
           پیوست‌های ثبت‌شده در پروژه‌ها — بارگذاری و مدیریت در فاز بعد.
         </p>
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-danger/30 bg-danger/5 px-5 py-4 text-[13px] text-danger"
+        >
+          {MANAGED_LIST_ERROR}
+        </div>
+      )}
+      {loading && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-2xl border border-line bg-ink-2/60 px-5 py-4 text-[13px] text-muted"
+        >
+          در حال دریافت…
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-line bg-ink-2/80">
         {files.length === 0 ? (
@@ -52,7 +78,7 @@ export default function ManageFilesPage() {
       </div>
 
       <p className="text-[11px] text-faint">
-        {toFaDigits(files.length)} فایل در {toFaDigits(projects.length)} پروژه
+        {toFaDigits(files.length)} فایل در {toFaDigits(projects?.length ?? 0)} پروژه
       </p>
     </div>
   );

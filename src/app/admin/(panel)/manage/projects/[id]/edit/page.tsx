@@ -1,18 +1,27 @@
 "use client";
 
-import { use } from "react";
-import { notFound } from "next/navigation";
-import { getManagedProject } from "@/lib/managed-project-store";
+import { useParams } from "next/navigation";
 import { ManagedProjectForm } from "@/components/admin/managed/ManagedProjectForm";
+import {
+  ManagedDetailSkeleton,
+  ManagedDetailStateless,
+} from "@/components/admin/managed/ManagedDetailStates";
+import { useManagedProject } from "@/lib/managed-project-store";
 
-interface EditPageProps {
-  params: Promise<{ id: string }>;
-}
+/** Phase 3 — edit form, loaded from the real API. */
+export default function EditManagedProjectPage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id ?? "";
+  const { project, error, notFound, loading } = useManagedProject(id);
 
-/** Phase 1 — edit project form (frontend-only submission). */
-export default function EditManagedProjectPage({ params }: EditPageProps) {
-  const { id } = use(params);
-  const project = getManagedProject(id);
-  if (!project) notFound();
+  if (notFound) {
+    return <ManagedDetailStateless message="پروژه پیدا نشد." />;
+  }
+  if (error) {
+    return <ManagedDetailStateless message={error} />;
+  }
+  if (loading || !project) {
+    return <ManagedDetailSkeleton />;
+  }
   return <ManagedProjectForm project={project} />;
 }

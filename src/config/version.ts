@@ -6,4 +6,4 @@
  * produces a byte-different worker, and the PWA update toast uses it to
  * detect that a new version is live. Bump it on every deploy.
  */
-export const APP_VERSION = "1.0.29";
+export const APP_VERSION = "1.0.30";

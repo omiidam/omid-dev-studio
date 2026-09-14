@@ -19,7 +19,10 @@ import {
   ManagedProgress,
   ManagedStatusBadge,
 } from "@/components/admin/managed/badges";
-import { listManagedProjects } from "@/lib/managed-project-store";
+import {
+  MANAGED_LIST_ERROR,
+  useManagedProjects,
+} from "@/lib/managed-project-store";
 
 /** Server-renderable heading + create action (plain markup, no store access). */
 export function ManagedProjectsHeading() {
@@ -50,14 +53,13 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 /**
- * Managed-projects list — search, three filters and sort, all client-side
- * (Phase 1). On desktop a polished table; on small screens each row collapses
- * into a card so nothing overflows horizontally.
+ * Managed-projects list — search, three filters and sort. Data comes from
+ * the real authenticated API (Phase 3); filtering/sorting stay client-side
+ * over the fetched records. On desktop a polished table; on small screens
+ * each row collapses into a card so nothing overflows horizontally.
  */
 export function ManagedProjectsList() {
-  // Read fresh on every render so create/edit (in-memory Phase 1 store) is
-  // reflected immediately after navigation.
-  const projects = listManagedProjects();
+  const { projects, error, loading } = useManagedProjects();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<ManagedProjectStatus | "">("");
   const [type, setType] = useState("");
@@ -65,6 +67,7 @@ export function ManagedProjectsList() {
   const [sort, setSort] = useState<SortKey>("updated");
 
   const filtered = useMemo(() => {
+    if (!projects) return [];
     const q = query.trim().toLowerCase();
     const result = projects.filter((project) => {
       if (status && project.status !== status) return false;
@@ -94,6 +97,7 @@ export function ManagedProjectsList() {
   }, [query, status, type, payment, sort, projects]);
 
   const activeTypeOptions = useMemo(() => {
+    if (!projects) return [];
     const seen = new Set(projects.map((project) => project.type));
     return Object.entries(MANAGED_TYPE_LABELS)
       .filter(([value]) => seen.has(value as ManagedProject["type"]))
@@ -112,6 +116,23 @@ export function ManagedProjectsList() {
 
   return (
     <div className="space-y-5">
+      {error && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-danger/30 bg-danger/5 px-5 py-4 text-[13px] text-danger"
+        >
+          {MANAGED_LIST_ERROR}
+        </div>
+      )}
+      {loading && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-2xl border border-line bg-ink-2/60 px-5 py-4 text-[13px] text-muted"
+        >
+          در حال دریافت پروژه‌ها…
+        </div>
+      )}
       {/* toolbar */}
       <div className="flex flex-col gap-3 rounded-2xl border border-line bg-ink-2/80 p-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-wrap items-center gap-2">
@@ -204,7 +225,7 @@ export function ManagedProjectsList() {
 
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] text-faint">
-            {toFaDigits(filtered.length)} از {toFaDigits(projects.length)} پروژه
+            {toFaDigits(filtered.length)} از {toFaDigits(projects?.length ?? 0)} پروژه
           </p>
           <div className="flex items-center rounded-lg border border-line bg-ink-3">
             {SORT_OPTIONS.map((option) => (
