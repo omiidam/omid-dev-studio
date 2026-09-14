@@ -48,15 +48,18 @@ export const RELEASE_CATEGORY_LABELS: Record<ReleaseCategory, string> = {
 
 export const RELEASE_INFO: ReleaseInfo = {
   version: APP_VERSION,
-  previousVersion: "1.0.27",
+  previousVersion: "1.0.28",
   changes: [
     {
       category: "new",
-      text: "پنل مدیریت پروژه‌ها (فاز ۱): داشبورد، فهرست پروژه‌ها با جستجو و فیلتر، صفحه‌ی جزئیات، فرم ایجاد و ویرایش",
+      text: "بازطراحی صفحه‌ی ورود مدیر با ساختار کارت گرادیانی و فیلدهای سایه‌دار مطابق طراحی جدید",
+    }, {
+      category: "new",
+      text: "نمایش/پنهان‌سازی رمز عبور، حالت‌های بارگذاری و موفقیت، و بازگشت به مقصد پس از ورود",
     },
     {
-      category: "new",
-      text: "بخش‌های مشتریان، فایل‌ها، مالی و تنظیمات در پنل مدیریت",
+      category: "improvement",
+      text: "حفظ مقصد درخواستی پیش از ورود و انتقال خودکار مدیر احرازشده از صفحه‌ی ورود به پنل",
     },
   ],
 };

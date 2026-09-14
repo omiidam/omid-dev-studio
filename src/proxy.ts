@@ -56,7 +56,13 @@ export function proxy(request: NextRequest) {
     );
   }
 
+  // Preserve the intended destination so a successful login can return the
+  // administrator to the admin page they originally requested. Only same-site
+  // admin paths are ever mirrored into the parameter.
   const loginUrl = new URL("/admin/login", request.url);
+  if (pathname !== "/admin") {
+    loginUrl.searchParams.set("next", pathname);
+  }
   return NextResponse.redirect(loginUrl);
 }
 
