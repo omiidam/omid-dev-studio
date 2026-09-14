@@ -7,6 +7,7 @@ import {
 import {
   createManagedProjectRecord,
   listManagedProjectRecords,
+  DatabaseUnavailableError,
 } from "@/lib/managed-project-db";
 import { requestIsAdminAuthed, unauthorizedAdminResponse } from "@/lib/auth";
 import { getClientIp, rateLimitHit } from "@/lib/rate-limit";
@@ -35,6 +36,20 @@ function internalError() {
       error: { code: "INTERNAL_ERROR", message: "خطای داخلی رخ داد." },
     },
     { status: 500, headers: NO_STORE },
+  );
+}
+
+/** Real database outage — 503, retryable, no fake success and no fallback. */
+function databaseUnavailable() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        code: "DATABASE_UNAVAILABLE",
+        message: "در دسترسی به پایگاه داده مشکلی پیش آمد. بعداً تلاش کنید.",
+      },
+    },
+    { status: 503, headers: NO_STORE },
   );
 }
 
@@ -88,6 +103,10 @@ export async function GET(request: Request) {
       { headers: NO_STORE },
     );
   } catch (error) {
+    if (error instanceof DatabaseUnavailableError) {
+      logError("[api/admin/managed-projects] GET: database unavailable", error);
+      return databaseUnavailable();
+    }
     logError("[api/admin/managed-projects] GET failed", error);
     return internalError();
   }
@@ -146,6 +165,10 @@ export async function POST(request: Request) {
       { status: 201, headers: NO_STORE },
     );
   } catch (error) {
+    if (error instanceof DatabaseUnavailableError) {
+      logError("[api/admin/managed-projects] POST: database unavailable", error);
+      return databaseUnavailable();
+    }
     logError("[api/admin/managed-projects] POST failed", error);
     return internalError();
   }

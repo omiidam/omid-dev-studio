@@ -57,15 +57,22 @@ updates are explicit field-by-field merges in `managed-project-db.ts`).
 
 ## Storage
 
-JSON file store following the existing `project-store.ts` conventions:
-atomic writes (temp + rename), serialized read-modify-write lock, forward-
-compatible record filtering.
+Real SQLite database (Node's built-in `node:sqlite` driver — zero external
+dependencies), WAL journal mode, one connection per server process.
 
-- Default path: `<project>/.data/managed-projects.json`
-- Override: `OMID_STUDIO_MANAGED_PROJECTS_FILE` (see `.env.example`)
+- Default path: `<project>/.data/managed-projects.db`
+- Override: `OMID_STUDIO_MANAGED_PROJECTS_DB` (see `.env.example`)
 
-Swap point for a real database later: only `src/lib/managed-project-db.ts`
-changes; routes and UI are untouched.
+Schema is managed by versioned migrations in `src/lib/managed-project-db.ts`
+(`schema_migrations` table, applied idempotently on open). Database-level
+CHECK constraints enforce the status/payment/progress/length domains, so
+structurally invalid data is rejected even below the zod layer. The legacy
+Phase-3 JSON file (`managed-projects.json`) is imported once, non-destructively,
+if it still exists.
+
+When the database is unavailable, the data layer throws
+`DatabaseUnavailableError` and the API answers `503 DATABASE_UNAVAILABLE` —
+never silent fallback to any other store.
 
 ## Frontend seam
 

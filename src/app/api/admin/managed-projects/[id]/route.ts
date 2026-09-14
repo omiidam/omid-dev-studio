@@ -8,6 +8,7 @@ import {
   getManagedProjectRecord,
   updateManagedProjectRecord,
   archiveManagedProjectRecord,
+  DatabaseUnavailableError,
 } from "@/lib/managed-project-db";
 import { requestIsAdminAuthed, unauthorizedAdminResponse } from "@/lib/auth";
 import { getClientIp, rateLimitHit } from "@/lib/rate-limit";
@@ -38,6 +39,15 @@ function jsonError(status: number, code: string, message: string) {
   );
 }
 
+/** Real database outage — 503, retryable, no fake success and no fallback. */
+function databaseUnavailable() {
+  return jsonError(
+    503,
+    "DATABASE_UNAVAILABLE",
+    "در دسترسی به پایگاه داده مشکلی پیش آمد. بعداً تلاش کنید.",
+  );
+}
+
 export async function GET(request: Request, { params }: Params) {
   if (!requestIsAdminAuthed(request)) return unauthorizedAdminResponse();
 
@@ -56,6 +66,10 @@ export async function GET(request: Request, { params }: Params) {
       { headers: NO_STORE },
     );
   } catch (error) {
+    if (error instanceof DatabaseUnavailableError) {
+      logError("[api/admin/managed-projects/:id] GET: database unavailable", error);
+      return databaseUnavailable();
+    }
     logError("[api/admin/managed-projects/:id] GET failed", error);
     return jsonError(500, "INTERNAL_ERROR", "خطای داخلی رخ داد.");
   }
@@ -123,6 +137,10 @@ export async function PATCH(request: Request, { params }: Params) {
       { headers: NO_STORE },
     );
   } catch (error) {
+    if (error instanceof DatabaseUnavailableError) {
+      logError("[api/admin/managed-projects/:id] PATCH: database unavailable", error);
+      return databaseUnavailable();
+    }
     logError("[api/admin/managed-projects/:id] PATCH failed", error);
     return jsonError(500, "INTERNAL_ERROR", "خطای داخلی رخ داد.");
   }
@@ -152,6 +170,10 @@ export async function DELETE(request: Request, { params }: Params) {
       { headers: NO_STORE },
     );
   } catch (error) {
+    if (error instanceof DatabaseUnavailableError) {
+      logError("[api/admin/managed-projects/:id] DELETE: database unavailable", error);
+      return databaseUnavailable();
+    }
     logError("[api/admin/managed-projects/:id] DELETE failed", error);
     return jsonError(500, "INTERNAL_ERROR", "خطای داخلی رخ داد.");
   }
