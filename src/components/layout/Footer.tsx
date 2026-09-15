@@ -128,11 +128,23 @@ export function Footer() {
               © {new Date().getFullYear()} OMID Studio — تمامی حقوق محفوظ است
             </p>
             <div className="flex items-center gap-6">
-              {/* Effective (completed) version — NOT the deployed build constant.
-                  A newer release being available must not change the version
-                  the user sees before they complete the update. */}
-              <FooterVersionBadge />
-            </div>
+            {/* Discreet internal entry point — leads to the existing admin
+                login; authentication itself is enforced server-side and the
+                route is excluded from the sitemap / disallowed in robots. */}
+            <Link
+              href="/admin"
+              data-track="nav_link_click"
+              data-track-prop-label="ورود مدیریت"
+              data-track-prop-source="footer"
+              className="text-[11px] text-faint transition-colors duration-300 hover:text-paper"
+            >
+              ورود مدیریت
+            </Link>
+            {/* Effective (completed) version — NOT the deployed build constant.
+                A newer release being available must not change the version
+                the user sees before they complete the update. */}
+            <FooterVersionBadge />
+          </div>
           </div>
         </Reveal>
       </div>

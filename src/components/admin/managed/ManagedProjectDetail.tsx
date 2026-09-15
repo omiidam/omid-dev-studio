@@ -10,6 +10,7 @@ import {
   ManagedProgress,
   ManagedStatusBadge,
 } from "@/components/admin/managed/badges";
+import { ManagedMilestones } from "@/components/admin/managed/ManagedMilestones";
 
 function formatDate(value: string): string {
   if (!value) return "—";
@@ -155,6 +156,10 @@ export function ManagedProjectDetail({
         <ManagedProgress value={project.progress} showLabel className="max-w-sm" />
       </div>
 
+      {/* Phase 6 — real milestones/timeline from the database, rendered
+          between the overview and the secondary columns. */}
+      <ManagedMilestones projectId={project.id} />
+
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
           {/* overview */}
@@ -226,96 +231,9 @@ export function ManagedProjectDetail({
             </dl>
           </Section>
 
-          {/* timeline */}
-          <Section title="خط زمانی پروژه">
-            {project.timeline.length === 0 ? (
-              <p className="py-4 text-center text-[13px] text-muted">
-                رویدادی ثبت نشده است.
-              </p>
-            ) : (
-              <ol className="relative space-y-6 border-r border-line pr-5">
-                {project.timeline.map((event) => (
-                  <li key={event.id} className="relative">
-                    <span
-                      aria-hidden="true"
-                      className="absolute -right-[26px] top-1 size-2.5 rounded-full bg-gradient-to-br from-violet to-cyan ring-4 ring-ink-2"
-                    />
-                    <p className="font-mono text-[11px] text-faint">
-                      {formatDate(event.date)}
-                    </p>
-                    <p className="mt-0.5 text-[13px] font-medium text-paper">
-                      {event.title}
-                    </p>
-                    {event.description && (
-                      <p className="mt-1 text-[12px] leading-6 text-muted">
-                        {event.description}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </Section>
         </div>
 
         <div className="space-y-6">
-          {/* milestones */}
-          <Section title="نقاط عطف">
-            {project.milestones.length === 0 ? (
-              <p className="py-4 text-center text-[13px] text-muted">
-                نقطه‌عطفی تعریف نشده است.
-              </p>
-            ) : (
-              <ul className="space-y-2.5">
-                {project.milestones.map((milestone) => (
-                  <li
-                    key={milestone.id}
-                    className="flex items-center gap-3 rounded-xl border border-line bg-ink-3/60 px-3.5 py-3"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={
-                        milestone.done
-                          ? "flex size-5 shrink-0 items-center justify-center rounded-full bg-success/15 text-success"
-                          : "flex size-5 shrink-0 items-center justify-center rounded-full bg-ink-3 ring-1 ring-inset ring-line-strong/40"
-                      }
-                    >
-                      {milestone.done ? (
-                        <svg viewBox="0 0 12 12" className="size-3" fill="none">
-                          <path
-                            d="m2.5 6.5 2 2 5-5.5"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      ) : (
-                        <span className="size-1.5 rounded-full bg-faint" />
-                      )}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={
-                          milestone.done
-                            ? "text-[13px] text-muted line-through"
-                            : "text-[13px] font-medium text-paper"
-                        }
-                      >
-                        {milestone.title}
-                      </p>
-                      {milestone.dueDate && (
-                        <p className="mt-0.5 font-mono text-[10px] text-faint">
-                          {formatDate(milestone.dueDate)}
-                        </p>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
-
           {/* activity */}
           <Section title="فعالیت اخیر">
             {project.activity.length === 0 ? (

@@ -100,6 +100,32 @@ const MIGRATIONS: { version: number; up: string }[] = [
       CREATE INDEX IF NOT EXISTS idx_managed_projects_archived ON managed_projects (archived);
     `,
   },
+  {
+    version: 2,
+    // Phase 6 — real milestones. Each row belongs to exactly one project
+    // (foreign key with CASCADE on project delete — deliberate policy:
+    // milestones are children, so deleting a project row removes them; the
+    // application-level DELETE is a soft archive, so this only fires if a
+    // project row were ever physically removed). Existing Phase-5 project
+    // rows are untouched — fresh projects simply start with zero milestones.
+    up: `
+      CREATE TABLE IF NOT EXISTS managed_project_milestones (
+        id           TEXT PRIMARY KEY,
+        project_id   TEXT NOT NULL REFERENCES managed_projects(id) ON DELETE CASCADE,
+        title        TEXT NOT NULL CHECK (length(trim(title)) > 0 AND length(title) <= 120),
+        description  TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 1000),
+        status       TEXT NOT NULL CHECK (status IN ('pending','in_progress','completed','paused')),
+        progress     INTEGER NOT NULL DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+        start_date   TEXT NOT NULL DEFAULT '' CHECK (start_date = '' OR start_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+        deadline     TEXT NOT NULL DEFAULT '' CHECK (deadline = '' OR deadline GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+        completed_at TEXT,
+        order_index  INTEGER NOT NULL DEFAULT 0 CHECK (order_index >= 0 AND order_index <= 9999),
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_milestones_project ON managed_project_milestones (project_id, order_index);
+    `,
+  },
 ];
 
 async function openDatabase(): Promise<DatabaseSync> {
@@ -552,5 +578,238 @@ export function restoreManagedProjectRecord(
       .prepare(`SELECT ${SELECT_COLUMNS} FROM managed_projects WHERE id = ?`)
       .get(id) as unknown as ManagedProjectRow;
     return rowToRecord(row);
+  });
+}
+
+/* ---------------------------------------------------------------------------
+ * Milestones (Phase 6) — real database rows related to managed projects.
+ * ------------------------------------------------------------------------ */
+
+/** The milestone row shape as returned by the API and consumed by the UI. */
+export interface StoredMilestone {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  status: string;
+  progress: number;
+  startDate: string;
+  deadline: string;
+  completedAt: string | null;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NewMilestone = Omit<
+  StoredMilestone,
+  "id" | "projectId" | "completedAt" | "createdAt" | "updatedAt"
+>;
+
+export type MilestoneUpdate = Partial<NewMilestone>;
+
+interface MilestoneRow {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  status: string;
+  progress: number;
+  start_date: string;
+  deadline: string;
+  completed_at: string | null;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function milestoneRowToRecord(row: MilestoneRow): StoredMilestone {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    progress: row.progress,
+    startDate: row.start_date,
+    deadline: row.deadline,
+    completedAt: row.completed_at,
+    order: row.order_index,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const MILESTONE_COLUMNS = `
+  id, project_id, title, description, status, progress, start_date, deadline,
+  completed_at, order_index, created_at, updated_at
+`;
+
+export function listMilestoneRecords(
+  projectId: string,
+): Promise<StoredMilestone[]> {
+  return withDb((database) => {
+    const rows = database
+      .prepare(
+        `SELECT ${MILESTONE_COLUMNS} FROM managed_project_milestones
+         WHERE project_id = ? ORDER BY order_index ASC, created_at ASC`,
+      )
+      .all(projectId) as unknown as MilestoneRow[];
+    return rows.map(milestoneRowToRecord);
+  });
+}
+
+export function getMilestoneRecord(
+  projectId: string,
+  id: string,
+): Promise<StoredMilestone | null> {
+  return withDb((database) => {
+    const row = database
+      .prepare(
+        `SELECT ${MILESTONE_COLUMNS} FROM managed_project_milestones
+         WHERE project_id = ? AND id = ?`,
+      )
+      .get(projectId, id) as unknown as MilestoneRow | undefined;
+    return row ? milestoneRowToRecord(row) : null;
+  });
+}
+
+export function createMilestoneRecord(
+  projectId: string,
+  input: NewMilestone,
+): Promise<StoredMilestone> {
+  return withDb((database) => {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    // Completion timestamp is derived server-side from status — never
+    // client-controlled, consistent with the status semantics.
+    const completedAt = input.status === "completed" ? now : null;
+    database
+      .prepare(
+        `INSERT INTO managed_project_milestones
+           (id, project_id, title, description, status, progress, start_date,
+            deadline, completed_at, order_index, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        projectId,
+        input.title,
+        input.description,
+        input.status,
+        input.progress,
+        input.startDate,
+        input.deadline,
+        completedAt,
+        input.order,
+        now,
+        now,
+      );
+    return {
+      ...input,
+      id,
+      projectId,
+      completedAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+export function updateMilestoneRecord(
+  projectId: string,
+  id: string,
+  update: MilestoneUpdate,
+): Promise<StoredMilestone | null> {
+  return withDb((database) => {
+    const existing = database
+      .prepare(
+        `SELECT ${MILESTONE_COLUMNS} FROM managed_project_milestones
+         WHERE project_id = ? AND id = ?`,
+      )
+      .get(projectId, id) as unknown as MilestoneRow | undefined;
+    if (!existing) return null;
+
+    // Explicit field-by-field mapping — request bodies never reach SQL.
+    const updates: string[] = [];
+    const params: (string | number)[] = [];
+    if (update.title !== undefined) {
+      updates.push("title = ?");
+      params.push(update.title);
+    }
+    if (update.description !== undefined) {
+      updates.push("description = ?");
+      params.push(update.description);
+    }
+    if (update.status !== undefined) {
+      updates.push("status = ?");
+      params.push(update.status);
+      // Maintain completed_at from status transitions: set on entering
+      // completed, clear when leaving it — the server stays authoritative.
+      if (update.status === "completed") {
+        updates.push("completed_at = ?");
+        params.push(new Date().toISOString());
+      } else {
+        updates.push("completed_at = NULL");
+      }
+    }
+    if (update.progress !== undefined) {
+      updates.push("progress = ?");
+      params.push(update.progress);
+    }
+    if (update.startDate !== undefined) {
+      updates.push("start_date = ?");
+      params.push(update.startDate);
+    }
+    if (update.deadline !== undefined) {
+      updates.push("deadline = ?");
+      params.push(update.deadline);
+    }
+    if (update.order !== undefined) {
+      updates.push("order_index = ?");
+      params.push(update.order);
+    }
+    updates.push("updated_at = ?");
+    params.push(new Date().toISOString(), projectId, id);
+
+    database
+      .prepare(
+        `UPDATE managed_project_milestones SET ${updates.join(", ")}
+         WHERE project_id = ? AND id = ?`,
+      )
+      .run(...params);
+
+    const row = database
+      .prepare(
+        `SELECT ${MILESTONE_COLUMNS} FROM managed_project_milestones
+         WHERE project_id = ? AND id = ?`,
+      )
+      .get(projectId, id) as unknown as MilestoneRow;
+    return milestoneRowToRecord(row);
+  });
+}
+
+/** Hard delete of a milestone row (project rows remain soft-deleted only). */
+export function deleteMilestoneRecord(
+  projectId: string,
+  id: string,
+): Promise<boolean> {
+  return withDb((database) => {
+    const result = database
+      .prepare(
+        `DELETE FROM managed_project_milestones WHERE project_id = ? AND id = ?`,
+      )
+      .run(projectId, id);
+    return result.changes > 0;
+  });
+}
+
+/** Bulk read for the detail workflow — milestones ride along with the project. */
+export function projectExistsRecord(id: string): Promise<boolean> {
+  return withDb((database) => {
+    const row = database
+      .prepare(`SELECT 1 FROM managed_projects WHERE id = ?`)
+      .get(id);
+    return row !== undefined;
   });
 }

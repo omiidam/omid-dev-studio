@@ -75,6 +75,33 @@ When the database is unavailable, the data layer throws
 `DatabaseUnavailableError` and the API answers `503 DATABASE_UNAVAILABLE` —
 never silent fallback to any other store.
 
+## Milestones (Phase 6)
+
+Nested under each project — the milestone is always addressed through its
+parent project in the URL, and the data layer enforces the relationship
+(a milestone of another project is unreachable by ID guessing).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/:id/milestones` | List milestones of a project, ordered by `order` then creation time. `404` when the project does not exist. |
+| POST | `/:id/milestones` | Create a milestone (`201`). `404` when the project does not exist. |
+| GET | `/:id/milestones/:milestoneId` | Fetch one milestone. `404` when missing or foreign. |
+| PATCH | `/:id/milestones/:milestoneId` | Partial update, validated field-by-field. |
+| DELETE | `/:id/milestones/:milestoneId` | **Hard delete** of the milestone row (projects remain soft-archived). |
+
+Validation (`src/lib/milestone-schema.ts`): `title` required ≤ 120,
+`description` ≤ 1000, `status` enum `pending | in_progress | completed | paused`,
+`progress` integer 0–100, `startDate`/`deadline` ISO-or-empty with
+`deadline ≥ startDate` (also re-checked against the merged record on PATCH),
+`order` integer 0–9999. `completedAt` is derived server-side from status
+transitions and never client-controlled.
+
+Storage: `managed_project_milestones` table (migration v2 in
+`managed-project-db.ts`) with a real foreign key to `managed_projects`
+(`ON DELETE CASCADE`) and a `(project_id, order_index)` index. Project-level
+progress/status are separate fields — no automatic aggregation from
+milestones.
+
 ## Frontend seam
 
 - `src/lib/managed-project-client.ts` — fetch wrapper (`{ success, data }`
@@ -83,6 +110,10 @@ never silent fallback to any other store.
   `useManagedProject(id)` hooks plus `useManagedArchive(id)` (archive with
   confirmation in the UI / restore). The backend is authoritative: no optimistic
   mutations; the UI renders server responses only.
+- `src/lib/milestone-client.ts` + `src/lib/milestone-store.ts` — milestone
+  API bridge and `useMilestones(projectId)` hook (create/update/remove with
+  confirmed responses only), consumed by the timeline component
+  `ManagedMilestones.tsx` on the project detail page.
 
 ## SEO boundary
 

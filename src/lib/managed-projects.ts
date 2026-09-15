@@ -86,6 +86,59 @@ export const MANAGED_TYPE_LABELS: Record<ManagedProjectType, string> = {
 };
 
 /* ---------------------------------------------------------------------------
+ * Milestones (Phase 6) — each belongs to exactly one project.
+ * ------------------------------------------------------------------------ */
+
+export const MILESTONE_STATUSES = [
+  "pending",
+  "in_progress",
+  "completed",
+  "paused",
+] as const;
+
+export type MilestoneStatus = (typeof MILESTONE_STATUSES)[number];
+
+export const MILESTONE_STATUS_LABELS: Record<MilestoneStatus, string> = {
+  pending: "در انتظار",
+  in_progress: "در حال انجام",
+  completed: "تکمیل شده",
+  paused: "متوقف شده",
+};
+
+/** Same token family as the project status pills — dark-mode safe. */
+export const MILESTONE_STATUS_STYLE: Record<MilestoneStatus, string> = {
+  pending: "bg-blue/10 text-blue ring-blue/25",
+  in_progress: "bg-cyan/10 text-cyan ring-cyan/25",
+  completed: "bg-success/10 text-success ring-success/25",
+  paused: "bg-ink-3 text-muted ring-line-strong/40",
+};
+
+export const milestoneStatusOptions = MILESTONE_STATUSES.map((value) => ({
+  value,
+  label: MILESTONE_STATUS_LABELS[value],
+}));
+
+/** Everything the milestone create/edit form collects, exactly. */
+export interface MilestoneInput {
+  title: string;
+  description: string;
+  status: MilestoneStatus;
+  progress: number;
+  startDate: string;
+  deadline: string;
+  order: number;
+}
+
+/** Persisted milestone — server adds identity, timestamps and completion. */
+export interface ManagedMilestoneRecord extends MilestoneInput {
+  id: string;
+  projectId: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ---------------------------------------------------------------------------
  * Record shape
  * ------------------------------------------------------------------------ */
 

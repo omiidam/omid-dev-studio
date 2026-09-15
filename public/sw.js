@@ -20,7 +20,7 @@
    branded Persian RTL fallback instead of a browser error page.
    ============================================================ */
 
-const APP_VERSION = "1.0.32";
+const APP_VERSION = "1.0.33";
 
 const CACHE_KEEP = [
   `omid-studio-static-${APP_VERSION}`,

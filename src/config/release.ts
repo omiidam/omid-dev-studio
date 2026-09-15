@@ -48,19 +48,19 @@ export const RELEASE_CATEGORY_LABELS: Record<ReleaseCategory, string> = {
 
 export const RELEASE_INFO: ReleaseInfo = {
   version: APP_VERSION,
-  previousVersion: "1.0.31",
+  previousVersion: "1.0.32",
   changes: [
     {
       category: "new",
-      text: "بایگانی و بازگردانی واقعی پروژه‌ها در پنل مدیریت با پنجره‌ی تأیید و حفظ رکورد در پایگاه داده",
+      text: "مدیریت واقعی مراحل پروژه در پنل مدیریت: ایجاد، ویرایش، حذف، وضعیت و درصد پیشرفت هر مرحله",
+    },
+    {
+      category: "new",
+      text: "خط زمانی زنده از داده‌های پایگاه داده با نمایش ترتیب، مهلت و تشخیص خودکار مراحل عقب‌افتاده",
     },
     {
       category: "improvement",
-      text: "افزودن نمای بایگانی‌شده‌ها به فهرست پروژه‌ها با امکان تشخیص سریع رکوردهای بایگانی",
-    },
-    {
-      category: "optimization",
-      text: "حذف کامل داده‌های نمایشی موقت از مسیرهای تولیدی پنل مدیریت",
+      text: "افزودن ورود مدیریت به پانوشت سایت برای دسترسی محتاطانه به پنل",
     },
   ],
 };
