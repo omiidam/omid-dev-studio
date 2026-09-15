@@ -82,7 +82,7 @@ function StageDot({ milestone }: { milestone: ManagedMilestoneRecord }) {
 }
 
 export function ManagedMilestones({ projectId }: { projectId: string }) {
-  const { milestones, error, busy, create, update, remove } = useMilestones(projectId);
+  const { milestones, error, busy, create, update, remove, move } = useMilestones(projectId);
   const [editing, setEditing] = useState<
     { mode: "create" } | { mode: "edit"; milestone: ManagedMilestoneRecord } | null
   >(null);
@@ -139,7 +139,7 @@ export function ManagedMilestones({ projectId }: { projectId: string }) {
           <>
             {/* timeline */}
             <ol className="relative space-y-5 border-r border-line pr-6">
-              {list.map((milestone) => (
+              {list.map((milestone, position) => (
                 <li key={milestone.id} className="relative">
                   <StageDot milestone={milestone} />
                   <div
@@ -180,6 +180,42 @@ export function ManagedMilestones({ projectId }: { projectId: string }) {
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
+                        {/* reorder — persisted via the real API; disabled at
+                            the ends and while any mutation is in flight */}
+                        <button
+                          type="button"
+                          aria-label={`انتقال ${milestone.title} به بالا`}
+                          disabled={busy || position === 0}
+                          onClick={() => void move(milestone.id, "up")}
+                          className="inline-flex size-7 items-center justify-center rounded-lg border border-line text-muted transition-colors duration-200 hover:border-cyan/40 hover:text-cyan disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-muted"
+                        >
+                          <svg aria-hidden="true" className="size-3.5" viewBox="0 0 16 16" fill="none">
+                            <path
+                              d="m4 10 4-4 4 4"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`انتقال ${milestone.title} به پایین`}
+                          disabled={busy || position === list.length - 1}
+                          onClick={() => void move(milestone.id, "down")}
+                          className="inline-flex size-7 items-center justify-center rounded-lg border border-line text-muted transition-colors duration-200 hover:border-cyan/40 hover:text-cyan disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-muted"
+                        >
+                          <svg aria-hidden="true" className="size-3.5" viewBox="0 0 16 16" fill="none">
+                            <path
+                              d="m4 6 4 4 4-4"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
                         <button
                           type="button"
                           aria-label={`ویرایش ${milestone.title}`}

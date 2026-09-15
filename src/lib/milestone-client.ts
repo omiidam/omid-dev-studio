@@ -82,6 +82,19 @@ export async function updateMilestoneViaApi(
   );
 }
 
+/** Minimal update used by reorder — only `order` travels, so status-derived
+ * fields (e.g. completedAt) are never touched by a move. */
+export async function reorderMilestoneViaApi(
+  projectId: string,
+  milestoneId: string,
+  order: number,
+): Promise<ManagedMilestoneRecord> {
+  return request<ManagedMilestoneRecord>(
+    milestonePath(projectId, milestoneId),
+    { method: "PATCH", body: JSON.stringify({ order }) },
+  );
+}
+
 export async function deleteMilestoneViaApi(
   projectId: string,
   milestoneId: string,
