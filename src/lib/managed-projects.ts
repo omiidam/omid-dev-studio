@@ -1,13 +1,12 @@
 /**
- * Canonical data contract for the Project Management Panel (Phase 1 —
- * frontend only).
+ * Canonical data contract for the Project Management Panel.
  *
  * Mirrors the conventions of `project-schema.ts`: Persian appears ONLY as UI
- * labels; values are always language-neutral English codes, so the Phase 2
- * backend can adopt this shape directly without renaming anything in the UI.
+ * labels; values are always language-neutral English codes, so the backend
+ * adopts this shape directly without renaming anything in the UI.
  *
- * Phase 1 note: nothing here touches the backend. The mock seed lives in
- * `data/admin/projects.ts` and is the ONLY place temporary demo data exists.
+ * Persistence: the real SQLite store (`managed-project-db.ts`) via the
+ * authenticated API — the Phase-1 mock seed was removed in Phase 5.
  */
 
 /* ---------------------------------------------------------------------------
@@ -138,6 +137,8 @@ export interface ManagedProjectInput {
 
 export interface ManagedProject extends ManagedProjectInput {
   id: string;
+  /** Soft-deleted projects stay in the database with this flag (Phase 5). */
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
   timeline: ManagedTimelineEvent[];

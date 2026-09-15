@@ -372,11 +372,13 @@ export function listManagedProjectRecords(
 
 export function getManagedProjectRecord(
   id: string,
+  options: { includeArchived?: boolean } = {},
 ): Promise<StoredManagedProject | null> {
   return withDb((database) => {
     const row = database
       .prepare(
-        `SELECT ${SELECT_COLUMNS} FROM managed_projects WHERE id = ? AND archived = 0`,
+        `SELECT ${SELECT_COLUMNS} FROM managed_projects
+         WHERE id = ?${options.includeArchived ? "" : " AND archived = 0"}`,
       )
       .get(id) as unknown as ManagedProjectRow | undefined;
     return row ? rowToRecord(row) : null;
@@ -523,6 +525,26 @@ export function archiveManagedProjectRecord(
         `UPDATE managed_projects
          SET archived = 1, updated_at = ?
          WHERE id = ? AND archived = 0`,
+      )
+      .run(new Date().toISOString(), id);
+    if (result.changes === 0) return null;
+    const row = database
+      .prepare(`SELECT ${SELECT_COLUMNS} FROM managed_projects WHERE id = ?`)
+      .get(id) as unknown as ManagedProjectRow;
+    return rowToRecord(row);
+  });
+}
+
+/** Reverse of archive — brings a soft-deleted project back to active state. */
+export function restoreManagedProjectRecord(
+  id: string,
+): Promise<StoredManagedProject | null> {
+  return withDb((database) => {
+    const result = database
+      .prepare(
+        `UPDATE managed_projects
+         SET archived = 0, updated_at = ?
+         WHERE id = ? AND archived = 1`,
       )
       .run(new Date().toISOString(), id);
     if (result.changes === 0) return null;

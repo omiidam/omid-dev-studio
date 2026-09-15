@@ -8,6 +8,7 @@ import {
   getManagedProjectRecord,
   updateManagedProjectRecord,
   archiveManagedProjectRecord,
+  restoreManagedProjectRecord,
   DatabaseUnavailableError,
 } from "@/lib/managed-project-db";
 import { requestIsAdminAuthed, unauthorizedAdminResponse } from "@/lib/auth";
@@ -15,9 +16,10 @@ import { getClientIp, rateLimitHit } from "@/lib/rate-limit";
 import { logError } from "@/lib/log";
 
 /**
- * Managed-project item (Phase 3).
+ * Managed-project item (Phase 3, archive/restore added in Phase 5).
  *
- *   GET    /api/admin/managed-projects/:id   → full record (admin-only fields included)
+ *   GET    /api/admin/managed-projects/:id   → full record (archived included)
+ *   POST   /api/admin/managed-projects/:id   → restore an archived project
  *   PATCH  /api/admin/managed-projects/:id   → partial update, validated field-by-field
  *   DELETE /api/admin/managed-projects/:id   → soft delete (archive), never destroyed
  *
@@ -57,7 +59,9 @@ export async function GET(request: Request, { params }: Params) {
   }
 
   try {
-    const record = await getManagedProjectRecord(id);
+    // Archived records are returned with their archived flag so the UI can
+    // distinguish (and restore) them; active-only consumers filter client-side.
+    const record = await getManagedProjectRecord(id, { includeArchived: true });
     if (!record) {
       return jsonError(404, "NOT_FOUND", "پروژه پیدا نشد.");
     }
@@ -130,7 +134,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const updated = await updateManagedProjectRecord(id, parsed.data);
     if (!updated) {
-      return jsonError(404, "NOT_FOUND", "پروژه پیدا نشد.");
+      return jsonError(404, "NOT_FOUND", "پروژه پیدا نشد یا بایگانی شده است.");
     }
     return NextResponse.json(
       { success: true, data: updated },
@@ -175,6 +179,40 @@ export async function DELETE(request: Request, { params }: Params) {
       return databaseUnavailable();
     }
     logError("[api/admin/managed-projects/:id] DELETE failed", error);
+    return jsonError(500, "INTERNAL_ERROR", "خطای داخلی رخ داد.");
+  }
+}
+
+/** Restore a soft-deleted (archived) project back to the active list. */
+export async function POST(request: Request, { params }: Params) {
+  if (!requestIsAdminAuthed(request)) return unauthorizedAdminResponse();
+
+  const ip = getClientIp(request);
+  const limited = rateLimitHit(`admin:managed:update:${ip}`, 90);
+  if (!limited.allowed) {
+    return jsonError(429, "RATE_LIMITED", "تعداد درخواست‌ها بیش از حد مجاز است.");
+  }
+
+  const { id } = await params;
+  if (!isValidProjectId(id)) {
+    return jsonError(400, "INVALID_ID", "شناسه پروژه معتبر نیست.");
+  }
+
+  try {
+    const restored = await restoreManagedProjectRecord(id);
+    if (!restored) {
+      return jsonError(404, "NOT_FOUND", "پروژه بایگانی‌شده‌ای با این شناسه پیدا نشد.");
+    }
+    return NextResponse.json(
+      { success: true, data: restored },
+      { headers: NO_STORE },
+    );
+  } catch (error) {
+    if (error instanceof DatabaseUnavailableError) {
+      logError("[api/admin/managed-projects/:id] POST: database unavailable", error);
+      return databaseUnavailable();
+    }
+    logError("[api/admin/managed-projects/:id] POST failed", error);
     return jsonError(500, "INTERNAL_ERROR", "خطای داخلی رخ داد.");
   }
 }

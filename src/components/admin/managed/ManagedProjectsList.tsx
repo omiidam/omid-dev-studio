@@ -59,7 +59,12 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
  * each row collapses into a card so nothing overflows horizontally.
  */
 export function ManagedProjectsList() {
-  const { projects, error, loading } = useManagedProjects();
+  // Phase 5: the toggle pulls archived records too, so soft-deleted projects
+  // stay identifiable; the default view remains active-only.
+  const [showArchived, setShowArchived] = useState(false);
+  const { projects, error, loading } = useManagedProjects({
+    includeArchived: showArchived,
+  });
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<ManagedProjectStatus | "">("");
   const [type, setType] = useState("");
@@ -70,6 +75,9 @@ export function ManagedProjectsList() {
     if (!projects) return [];
     const q = query.trim().toLowerCase();
     const result = projects.filter((project) => {
+      // When archived records are loaded, they always carry the flag; the
+      // archived view shows them exclusively so the two lists stay clean.
+      if (showArchived !== Boolean(project.archived)) return false;
       if (status && project.status !== status) return false;
       if (type && project.type !== type) return false;
       if (payment && project.payment !== payment) return false;
@@ -94,7 +102,7 @@ export function ManagedProjectsList() {
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
     });
-  }, [query, status, type, payment, sort, projects]);
+  }, [query, status, type, payment, sort, projects, showArchived]);
 
   const activeTypeOptions = useMemo(() => {
     if (!projects) return [];
@@ -224,9 +232,22 @@ export function ManagedProjectsList() {
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] text-faint">
-            {toFaDigits(filtered.length)} از {toFaDigits(projects?.length ?? 0)} پروژه
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-[11px] text-faint">
+              {toFaDigits(filtered.length)} از {toFaDigits(projects?.length ?? 0)} پروژه
+            </p>
+            <button
+              type="button"
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived((value) => !value)}
+              className={cn(
+                "text-[11px] font-medium transition-colors duration-200",
+                showArchived ? "text-cyan" : "text-muted hover:text-paper",
+              )}
+            >
+              {showArchived ? "مشاهده پروژه‌های فعال" : "نمایش بایگانی‌شده‌ها"}
+            </button>
+          </div>
           <div className="flex items-center rounded-lg border border-line bg-ink-3">
             {SORT_OPTIONS.map((option) => (
               <button
@@ -251,7 +272,9 @@ export function ManagedProjectsList() {
       <div className="hidden overflow-hidden rounded-2xl border border-line bg-ink-2/80 lg:block">
         {filtered.length === 0 ? (
           <div className="px-5 py-14 text-center text-[14px] text-muted">
-            پروژه‌ای با این فیلترها پیدا نشد.
+            {showArchived
+              ? "پروژه‌ی بایگانی‌شده‌ای پیدا نشد."
+              : "پروژه‌ای با این فیلترها پیدا نشد."}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -304,7 +327,13 @@ export function ManagedProjectsList() {
                       {project.deadline ? toFaDigits(project.deadline) : "—"}
                     </td>
                     <td className="px-4 py-3.5">
-                      <ManagedStatusBadge status={project.status} />
+                      {project.archived ? (
+                        <span className="inline-flex items-center rounded-full bg-ink-3 px-2.5 py-1 text-[11px] font-medium text-muted ring-1 ring-inset ring-line-strong/40">
+                          بایگانی‌شده
+                        </span>
+                      ) : (
+                        <ManagedStatusBadge status={project.status} />
+                      )}
                     </td>
                     <td className="px-4 py-3.5">
                       <ManagedPaymentBadge status={project.payment} />
@@ -350,7 +379,12 @@ export function ManagedProjectsList() {
             <Link
               key={project.id}
               href={`/admin/manage/projects/${project.id}`}
-              className="block rounded-2xl border border-line bg-ink-2/80 p-4 transition-colors duration-200 hover:border-line-strong"
+              className={cn(
+                "block rounded-2xl border p-4 transition-colors duration-200",
+                project.archived
+                  ? "border-dashed border-line-strong/60 bg-ink-2/60"
+                  : "border-line bg-ink-2/80 hover:border-line-strong",
+              )}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

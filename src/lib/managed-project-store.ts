@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ManagedProject } from "@/lib/managed-projects";
-import { emptyProject } from "@/data/admin/projects";
+import type {
+  ManagedProject,
+  ManagedProjectInput,
+} from "@/lib/managed-projects";
 import {
   ManagedProjectApiError,
+  archiveManagedProjectViaApi,
   fetchManagedProject,
   fetchManagedProjects,
+  restoreManagedProjectViaApi,
 } from "@/lib/managed-project-client";
 
 /**
@@ -17,9 +21,28 @@ import {
  * authoritative, every list/detail fetch re-reads the persisted records, and
  * there is no client-side mock data in production paths.
  *
- * `emptyProject` and the record shape stay re-exported so consumers keep
- * their exact Phase-1 call signatures.
  */
+
+/** Blank create-form state — previously lived with the Phase-1 mock seed,
+ * which no longer exists in any production path (Phase 5 cleanup). */
+export function emptyProject(): ManagedProjectInput {
+  return {
+    name: "",
+    client: "",
+    type: "website",
+    description: "",
+    status: "negotiating",
+    progress: 0,
+    startDate: "",
+    deadline: "",
+    budget: 0,
+    payment: "unpaid",
+    demoUrl: "",
+    githubUrl: "",
+    technologies: [],
+    notes: "",
+  };
+}
 
 export interface ManagedProjectStats {
   total: number;
@@ -43,12 +66,15 @@ function describeError(cause: unknown): string {
 export function useManagedProject(id: string) {
   // State carries the id it was loaded for, so a navigation between projects
   // never renders the previous project while the next fetch is in flight.
+  const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<{
     id: string;
     project: ManagedProject | null;
     error: string | null;
     notFound: boolean;
   }>({ id, project: null, error: null, notFound: false });
+
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +98,7 @@ export function useManagedProject(id: string) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, reloadKey]);
 
   const current = state.id === id ? state : null;
   return {
@@ -80,7 +106,54 @@ export function useManagedProject(id: string) {
     error: current?.error ?? null,
     notFound: current?.notFound ?? false,
     loading: current === null || current.project === null,
+    reload,
   };
+}
+
+/** Archive/restore result state for the detail page action. */
+export function useManagedArchive(id: string) {
+  const [busy, setBusy] = useState<"archive" | "restore" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const archive = useCallback(async () => {
+    if (busy) return false;
+    setBusy("archive");
+    setError(null);
+    try {
+      await archiveManagedProjectViaApi(id);
+      return true;
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof ManagedProjectApiError
+          ? cause.message
+          : "در بایگانی پروژه مشکلی پیش آمد.",
+      );
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, id]);
+
+  const restore = useCallback(async () => {
+    if (busy) return false;
+    setBusy("restore");
+    setError(null);
+    try {
+      await restoreManagedProjectViaApi(id);
+      return true;
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof ManagedProjectApiError
+          ? cause.message
+          : "در بازگردانی پروژه مشکلی پیش آمد.",
+      );
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, id]);
+
+  return { archive, restore, busy, error };
 }
 
 interface ListState {
@@ -90,7 +163,8 @@ interface ListState {
   error: string | null;
 }
 
-export function useManagedProjects() {
+export function useManagedProjects(options: { includeArchived?: boolean } = {}) {
+  const includeArchived = options.includeArchived === true;
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<ListState>({
     key: 0,
@@ -102,7 +176,7 @@ export function useManagedProjects() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchManagedProjects()
+    fetchManagedProjects({ includeArchived })
       .then((records) => {
         if (!cancelled) {
           setState({ key: reloadKey, projects: records, error: null });
@@ -121,7 +195,7 @@ export function useManagedProjects() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, includeArchived]);
 
   const current = state.key === reloadKey ? state : null;
   return {
@@ -143,4 +217,4 @@ export function computeManagedProjectStats(
   };
 }
 
-export { emptyProject };
+

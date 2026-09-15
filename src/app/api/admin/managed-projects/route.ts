@@ -97,6 +97,9 @@ export async function GET(request: Request) {
         "deadline",
         "progress",
       ] as const) ?? undefined,
+      // archived=1 → include soft-deleted records (each carries its flag so
+      // the UI can distinguish them); default remains active-only.
+      includeArchived: url.searchParams.get("archived") === "1",
     });
     return NextResponse.json(
       { success: true, data: records, total: records.length },

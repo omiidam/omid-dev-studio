@@ -48,19 +48,19 @@ export const RELEASE_CATEGORY_LABELS: Record<ReleaseCategory, string> = {
 
 export const RELEASE_INFO: ReleaseInfo = {
   version: APP_VERSION,
-  previousVersion: "1.0.30",
+  previousVersion: "1.0.31",
   changes: [
     {
       category: "new",
-      text: "انتقال داده‌های پنل مدیریت به پایگاه داده‌ی واقعی SQLite با پایداری کامل پس از ری‌استارت سرور",
-    },
-    {
-      category: "security",
-      text: "اعمال محدودیت‌های ساختاری داده در سطح پایگاه داده برای وضعیت‌ها، درصد پیشرفت و مبالغ",
+      text: "بایگانی و بازگردانی واقعی پروژه‌ها در پنل مدیریت با پنجره‌ی تأیید و حفظ رکورد در پایگاه داده",
     },
     {
       category: "improvement",
-      text: "واکنش شفاف خطای ۵۰۳ هنگام قطع دسترسی به پایگاه داده بدون بازگشت پنهان به داده‌ی موقت",
+      text: "افزودن نمای بایگانی‌شده‌ها به فهرست پروژه‌ها با امکان تشخیص سریع رکوردهای بایگانی",
+    },
+    {
+      category: "optimization",
+      text: "حذف کامل داده‌های نمایشی موقت از مسیرهای تولیدی پنل مدیریت",
     },
   ],
 };

@@ -67,8 +67,13 @@ function withPresentationArrays(record: ManagedProject): ManagedProject {
   };
 }
 
-export async function fetchManagedProjects(): Promise<ManagedProject[]> {
-  const records = await request<ManagedProject[]>("/api/admin/managed-projects");
+export async function fetchManagedProjects(
+  options: { includeArchived?: boolean } = {},
+): Promise<ManagedProject[]> {
+  const url = options.includeArchived
+    ? "/api/admin/managed-projects?archived=1"
+    : "/api/admin/managed-projects";
+  const records = await request<ManagedProject[]>(url);
   return records.map(withPresentationArrays);
 }
 
@@ -96,6 +101,27 @@ export async function updateManagedProjectViaApi(
   const record = await request<ManagedProject>(
     `/api/admin/managed-projects/${encodeURIComponent(id)}`,
     { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return withPresentationArrays(record);
+}
+
+/** Soft delete — the backend archives the record, never destroys it. */
+export async function archiveManagedProjectViaApi(
+  id: string,
+): Promise<void> {
+  await request<{ id: string; archived: boolean }>(
+    `/api/admin/managed-projects/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** Bring a previously archived project back to the active list. */
+export async function restoreManagedProjectViaApi(
+  id: string,
+): Promise<ManagedProject> {
+  const record = await request<ManagedProject>(
+    `/api/admin/managed-projects/${encodeURIComponent(id)}`,
+    { method: "POST" },
   );
   return withPresentationArrays(record);
 }

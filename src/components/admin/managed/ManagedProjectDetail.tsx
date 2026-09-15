@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ManagedProject } from "@/lib/managed-projects";
 import { MANAGED_TYPE_LABELS } from "@/lib/managed-projects";
-import { toFaDigits } from "@/lib/utils";
+import { cn, toFaDigits } from "@/lib/utils";
 import {
   ManagedPaymentBadge,
   ManagedProgress,
@@ -39,6 +39,15 @@ function formatBudget(amount: number): string {
   return `${toFaDigits(amount.toLocaleString("en-US"))} دلار`;
 }
 
+/** Distinguishes soft-deleted records at a glance. */
+function ArchivedBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-ink-3 px-2.5 py-1 text-[11px] font-medium text-muted ring-1 ring-inset ring-line-strong/40">
+      بایگانی‌شده
+    </span>
+  );
+}
+
 /** Section shell — consistent with the existing admin area's cards. */
 function Section({
   title,
@@ -71,10 +80,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /**
  * Managed project details — all fields plus timeline/milestones/activity/
- * files sections (frontend UI only, Phase 1). Data comes from the Phase-1
- * store; links out for demo/GitHub render only when set.
+ * files sections. Data comes from the real API; the header hosts the
+ * archive/restore action injected by the page. Links out for demo/GitHub
+ * render only when set.
  */
-export function ManagedProjectDetail({ project }: { project: ManagedProject }) {
+export function ManagedProjectDetail({
+  project,
+  archived = false,
+  action,
+}: {
+  project: ManagedProject;
+  /** Soft-deleted record — visually distinguished from active projects. */
+  archived?: boolean;
+  /** Archive/restore control, rendered in the header action slot. */
+  action?: React.ReactNode;
+}) {
   if (!project) notFound();
 
   return (
@@ -101,7 +121,14 @@ export function ManagedProjectDetail({ project }: { project: ManagedProject }) {
       </Link>
 
       {/* header */}
-      <div className="flex flex-col gap-4 rounded-2xl border border-line bg-ink-2/80 p-6">
+      <div
+        className={cn(
+          "flex flex-col gap-4 rounded-2xl border p-6",
+          archived
+            ? "border-dashed border-line-strong/60 bg-ink-2/60"
+            : "border-line bg-ink-2/80",
+        )}
+      >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="kicker">{MANAGED_TYPE_LABELS[project.type]}</p>
@@ -112,14 +139,18 @@ export function ManagedProjectDetail({ project }: { project: ManagedProject }) {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <ManagedStatusBadge status={project.status} />
               <ManagedPaymentBadge status={project.payment} />
+              {archived && <ArchivedBadge />}
             </div>
           </div>
-          <Link
-            href={`/admin/manage/projects/${project.id}/edit`}
-            className="inline-flex h-10 shrink-0 items-center rounded-xl border border-line bg-ink-3 px-4 text-[13px] font-medium text-paper transition-colors duration-200 hover:border-cyan/40 hover:text-cyan"
-          >
-            ویرایش پروژه
-          </Link>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Link
+              href={`/admin/manage/projects/${project.id}/edit`}
+              className="inline-flex h-10 items-center rounded-xl border border-line bg-ink-3 px-4 text-[13px] font-medium text-paper transition-colors duration-200 hover:border-cyan/40 hover:text-cyan"
+            >
+              ویرایش پروژه
+            </Link>
+            {action}
+          </div>
         </div>
         <ManagedProgress value={project.progress} showLabel className="max-w-sm" />
       </div>

@@ -1,4 +1,4 @@
-# Managed-Projects API (Phase 3)
+# Managed-Projects API (Phase 3, archive/restore added in Phase 5)
 
 Authenticated backend for the Project Management Panel (`/admin/manage/*`).
 Reuses the Phase-2 admin session — there is no separate auth system.
@@ -9,10 +9,11 @@ Base: `/api/admin/managed-projects`
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | List projects. Query params: `status`, `payment`, `type`, `q` (search), `sort` (`updated` \| `deadline` \| `progress`). Archived records are excluded. |
+| GET | `/` | List projects. Query params: `status`, `payment`, `type`, `q` (search), `sort` (`updated` \| `deadline` \| `progress`), `archived=1` (include soft-deleted records; default excludes them). |
 | POST | `/` | Create a project (full validated payload). Returns `201` + created record. |
-| GET | `/:id` | Fetch one project. `404` when missing or archived. |
-| PATCH | `/:id` | Partial update — only explicitly allowed fields, merged server-side. |
+| GET | `/:id` | Fetch one project. `404` when missing. Archived records are returned with `archived: true` so the UI can distinguish them. |
+| POST | `/:id` | **Restore an archived project** back to the active list. `404` when no archived record exists. |
+| PATCH | `/:id` | Partial update — only explicitly allowed fields, merged server-side. Archived projects are not editable (`404`). |
 | DELETE | `/:id` | **Soft delete (archive).** The record is retained with `archived: true`, never destroyed. |
 
 ## Authentication
@@ -79,7 +80,8 @@ never silent fallback to any other store.
 - `src/lib/managed-project-client.ts` — fetch wrapper (`{ success, data }`
   envelope, Persian error mapping).
 - `src/lib/managed-project-store.ts` — `useManagedProjects()` /
-  `useManagedProject(id)` hooks. The backend is authoritative: no optimistic
+  `useManagedProject(id)` hooks plus `useManagedArchive(id)` (archive with
+  confirmation in the UI / restore). The backend is authoritative: no optimistic
   mutations; the UI renders server responses only.
 
 ## SEO boundary
